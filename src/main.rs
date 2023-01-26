@@ -1,5 +1,15 @@
+mod gd;
+
 use iced::{
-    widget::{button, column, text},
+    widget::{
+        button, 
+        column, 
+        row, 
+        text, 
+        scrollable, 
+        radio::Radio,
+        Column
+    },
     Sandbox, 
     Settings,
     Element,
@@ -16,19 +26,7 @@ use std::{
     io::BufReader,
     path::PathBuf,
 };
-
-
-fn gd_path() -> PathBuf {
-    let mut path_buf = home::home_dir().unwrap();
-    #[cfg(unix)]
-    path_buf.extend([".local", "share", "Steam", "steamapps", 
-                     "compatdata", "322170", "pfx", "drive_c",
-                     "users", "steamuser", "AppData", "Local",
-                     "GeometryDash"].iter());
-    #[cfg(windows)]
-    path_buf.extend(["AppData", "Local", "GeometryDash"].iter());
-    path_buf
-}
+use gd::gd_path;
 
 
 struct Guider {
@@ -47,7 +45,6 @@ impl Sandbox for Guider {
         let gd_path = gd_path();
         let (_stream, stream_handle) = OutputStream::try_default().unwrap();
         let sink = Sink::try_new(&stream_handle).unwrap();
-        println!("{:?}", gd_path.as_os_str());
         let music_file = BufReader::new(File::open(gd_path.join("613929.mp3")).unwrap());
         let source = Decoder::new(music_file).unwrap();
         //sink.append(source);
@@ -56,7 +53,24 @@ impl Sandbox for Guider {
     }
 
     fn view(&self) -> Element<Message> {
-        column![button("pause").on_press(Message::Pause), button("play").on_press(Message::Play)].into()
+        // column![button("pause").on_press(Message::Pause), button("play").on_press(Message::Play)].into()
+        row![
+            scrollable(["lvl 1", "lvl 2", "lvl 3"].iter().fold(
+                Column::new(), |col, item| col.push(button(*item).on_press(Message::Pause))
+            )),
+            column![
+                row![
+                    column![text("Title"), text("Song Title & ID")],
+                    column![
+                        text("G"),
+                        text("Y"),
+                        text("O"),
+                    ]
+                ], 
+                row![text("zoom in"), text("zoom out"), text("delete"), text("add"), text("edit")], 
+                text("view canvas"),
+            ]
+        ].into()
     }
 
     fn update(&mut self, message: Message) {
