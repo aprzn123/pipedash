@@ -3,16 +3,12 @@ use std::fs::File;
 use std::io::Read;
 use base64::engine::{general_purpose::URL_SAFE, Engine};
 use flate2::read::GzDecoder;
-use quick_xml::Reader;
+use quick_xml::{Reader, events::Event};
 
 struct User {
     name: String,
     id: Option<u64>,
 }
-
-struct InnerLevel; // TODO: write this
-
-type Difficulty = u8;
 
 enum Song {
     Official{id: i32 /*k8*/},
@@ -22,6 +18,11 @@ enum Song {
 struct Level {
     name: String, // k2
     song: Song,
+}
+
+struct OuterLevel {
+    name: String, // k2
+    inner: String, // k4
 }
 
 pub fn gd_path() -> PathBuf {
@@ -36,7 +37,7 @@ pub fn gd_path() -> PathBuf {
     path_buf
 }
 
-fn load_levels() -> Vec<Level> {
+fn load_levels() -> Vec<OuterLevel> {
     let raw_save_data = {
         let mut save_file = File::open(gd_path().join("CCLocalLevels.dat")).expect("No save file found!");
         let mut sd = Vec::new();
@@ -53,9 +54,13 @@ fn load_levels() -> Vec<Level> {
         }
         plist
     };
-    let reader = Reader::from_str(plist.as_ref());
+    let mut reader = Reader::from_str(plist.as_ref());
     let mut out = vec![];
     loop {
+        let token = reader.read_event().unwrap();
+        match token {
+            
+        }
         break out;
     }
 }
