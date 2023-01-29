@@ -3,16 +3,12 @@ use std::fs::File;
 use std::io::Read;
 use base64::engine::{general_purpose::URL_SAFE, Engine};
 use flate2::read::GzDecoder;
-use quick_xml::Reader;
+use quick_xml::{Reader, events::Event};
 
 struct User {
     name: String,
     id: Option<u64>,
 }
-
-struct InnerLevel; // TODO: write this
-
-type Difficulty = u8;
 
 enum Song {
     Official{id: i32 /*k8*/},
@@ -35,7 +31,6 @@ pub fn gd_path() -> PathBuf {
     path_buf.extend(["AppData", "Local", "GeometryDash"].iter());
     path_buf
 }
-
 
 struct LevelBuilder {
     name: Option<String>,
@@ -82,9 +77,13 @@ fn get_levels() -> Vec<Level> {
         }
         plist
     };
-    let reader = Reader::from_str(plist.as_ref());
+    let mut reader = Reader::from_str(plist.as_ref());
     let mut out = vec![];
     loop {
+        let token = reader.read_event().unwrap();
+        match token {
+            
+        }
         break out;
     }
 }
