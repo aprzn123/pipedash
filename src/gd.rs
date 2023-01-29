@@ -36,7 +36,36 @@ pub fn gd_path() -> PathBuf {
     path_buf
 }
 
-fn load_levels() -> Vec<Level> {
+
+struct LevelBuilder {
+    name: Option<String>,
+    song: Option<Song>,
+}
+
+impl Default for LevelBuilder {
+    fn default() -> Self {
+        Self {name: None, song: None}
+    }
+}
+
+impl LevelBuilder {
+    fn with_name(&mut self, name: String) {
+        self.name = Some(name);
+    }
+    fn with_song(&mut self, song: Song) {
+        self.song = Some(song);
+    }
+    fn make_level(self) -> Option<Level> {
+        if let Some(name) = self.name {
+            if let Some(song) = self.song {
+                return Some(Level {name, song});
+            }
+        }
+        None
+    }
+}
+
+fn get_levels() -> Vec<Level> {
     let raw_save_data = {
         let mut save_file = File::open(gd_path().join("CCLocalLevels.dat")).expect("No save file found!");
         let mut sd = Vec::new();
