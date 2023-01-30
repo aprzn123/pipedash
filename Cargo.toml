@@ -11,4 +11,4 @@ rodio = {version = "0.16.0"}
 home = {version = "0.5.4"}
 base64 = {version = "0.21.0"}
 flate2 = {version = "1.0.25"}
-quick-xml = {version = "0.27.1"}
+gd_plist = {git = "https://github.com/Syudagye/gd-plist.git", version = "1.4.0"}

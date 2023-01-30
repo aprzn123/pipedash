@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io::Read;
 use base64::engine::{general_purpose::URL_SAFE, Engine};
 use flate2::read::GzDecoder;
-use quick_xml::{Reader, events::Event};
 
 struct User {
     name: String,
@@ -88,6 +87,40 @@ impl LevelBuilder {
     }
 }
 
+fn verbosify_plist(plist: &str) -> String {
+    plist
+    .replace("</d>","</dict>")
+    .replace("</k>","</key>")
+    .replace("<d>","<dict>")
+    .replace("<d />","<dict />")
+    .replace("<d/>","<dict />")
+    .replace("<k>","<key>")
+    .replace("<s>","<string>")
+    .replace("</s>","</string>")
+    .replace("<i>","<integer>")
+    .replace("</i>","</integer>")
+    .replace("<t />","<true />")
+    .replace("<t/>","<true />")
+    .replace("<r>","<real>")
+    .replace("</r>","</real>")
+}
+
+fn concisify_plist(plist: &str) -> String {
+    plist
+    .replace("</dict>","</d>")
+    .replace("</key>","</k>")
+    .replace("<dict>","<d>")
+    .replace("<dict />","<d/>")
+    .replace("<key>","<k>")
+    .replace("<string>","<s>")
+    .replace("</string>","</s>")
+    .replace("<integer>","<i>")
+    .replace("</integer>","</i>")
+    .replace("<true />","<t/>")
+    .replace("<real>","<r>")
+    .replace("</real>","</r>")
+}
+
 fn get_local_level_plist() -> String {
     let raw_save_data = {
         let mut save_file = File::open(gd_path().join("CCLocalLevels.dat")).expect("No save file found!");
@@ -102,19 +135,9 @@ fn get_local_level_plist() -> String {
     if let Err(_) = decoder.read_to_string(&mut plist) {
         println!("Warning: Game save likely corrupted (gzip decode failed)");
     }
-    plist
+    verbosify_plist(&plist)
 }
 
 fn get_outer_levels() -> Vec<Level> {
     let plist = get_local_level_plist();
-    let mut reader = Reader::from_str(plist.as_ref());
-    let mut out = vec![];
-    let builder = LevelBuilder::default(); 
-    loop {
-        let token = reader.read_event().unwrap();
-        match token {
-            _ => {}
-        }
-        break out;
-    }
 }
