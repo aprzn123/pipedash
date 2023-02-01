@@ -30,33 +30,24 @@ use gd::gd_path;
 
 
 struct Guider {
-    sink: Sink,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum Message {
-    Play,
-    Pause,
+    Msg,
 }
 
 impl Sandbox for Guider {
     type Message = Message;
     fn new() -> Self {
-        let gd_path = gd_path();
-        let (_stream, stream_handle) = OutputStream::try_default().unwrap();
-        let sink = Sink::try_new(&stream_handle).unwrap();
-        let music_file = BufReader::new(File::open(gd_path.join("613929.mp3")).unwrap());
-        let source = Decoder::new(music_file).unwrap();
-        //sink.append(source);
-        //sink.pause();
-        Self {sink}
+        Self {}
     }
 
     fn view(&self) -> Element<Message> {
         // column![button("pause").on_press(Message::Pause), button("play").on_press(Message::Play)].into()
         row![
             scrollable(["lvl 1", "lvl 2", "lvl 3"].iter().fold(
-                Column::new(), |col, item| col.push(button(*item).on_press(Message::Pause))
+                Column::new(), |col, item| col.push(button(*item).on_press(Message::Msg))
             )),
             column![
                 row![
@@ -75,8 +66,7 @@ impl Sandbox for Guider {
 
     fn update(&mut self, message: Message) {
         match message {
-            Message::Pause => self.sink.pause(),
-            Message::Play => self.sink.play(),
+            Message::Msg => {println!("Message received!")}
         }
     }
 

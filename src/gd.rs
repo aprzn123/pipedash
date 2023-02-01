@@ -96,7 +96,7 @@ fn get_local_level_plist() -> Value {
         save_file.read_to_end(&mut sd).unwrap();
         sd
     };
-    let data_post_xor: Vec<u8> = raw_save_data.iter().map(|b| b ^ 11).collect();
+    let data_post_xor: Vec<u8> = raw_save_data.iter().map(|b| b ^ 11).filter(|&b| b != 0u8).collect();
     let data_post_b64 = URL_SAFE.decode(data_post_xor).unwrap();
     let mut decoder = GzDecoder::<&[u8]>::new(data_post_b64.as_ref());
     let mut plist = String::new();
