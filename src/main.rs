@@ -87,5 +87,6 @@ impl Sandbox for Guider {
 
 
 fn main() -> iced::Result {
+    println!("{:?}", gd::get_outer_levels());
     Guider::run(Settings::default())
 }

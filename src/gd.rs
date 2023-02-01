@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Cursor};
 use base64::engine::{general_purpose::URL_SAFE, Engine};
 use flate2::read::GzDecoder;
+use gd_plist::Value;
 
 struct User {
     name: String,
@@ -20,9 +21,10 @@ struct Level {
     song: Song,
 }
 
-struct OuterLevel {
+#[derive(Debug)]
+pub struct OuterLevel {
     name: String, // k2
-    revision: i32, // k46
+    revision: Option<i64>, // k46
 }
 
 pub fn gd_path() -> PathBuf {
@@ -40,7 +42,7 @@ pub fn gd_path() -> PathBuf {
 struct LevelBuilder {
     name: Option<String>,
     song: Option<Song>,
-    revision: Option<i32>,
+    revision: Option<i64>,
 }
 
 impl Default for LevelBuilder {
@@ -60,68 +62,34 @@ impl LevelBuilder {
         self.song = Some(song);
     }
 
-    fn with_revision(&mut self, revision: i32) {
+    fn with_revision(&mut self, revision: i64) {
         self.revision = Some(revision);
     }
 
-    fn make_level(self) -> Option<Level> {
+    fn build_level(self) -> Option<Level> {
         match self {
             Self {
                 name: Some(name), 
                 song: Some(song), 
-                revision: Some(revision)
+                revision,
             } => Some(Level{song, outer: OuterLevel {name, revision}}),
             _ => None,
         }
     }
 
-    fn make_outer_level(self) -> Option<OuterLevel> {
+    fn build_outer_level(self) -> Option<OuterLevel> {
         match self {
             Self {
                 name: Some(name), 
-                song, 
-                revision: Some(revision)
+                revision,
+                ..
             } => Some(OuterLevel {name, revision}),
             _ => None,
         }
     }
 }
 
-fn verbosify_plist(plist: &str) -> String {
-    plist
-    .replace("</d>","</dict>")
-    .replace("</k>","</key>")
-    .replace("<d>","<dict>")
-    .replace("<d />","<dict />")
-    .replace("<d/>","<dict />")
-    .replace("<k>","<key>")
-    .replace("<s>","<string>")
-    .replace("</s>","</string>")
-    .replace("<i>","<integer>")
-    .replace("</i>","</integer>")
-    .replace("<t />","<true />")
-    .replace("<t/>","<true />")
-    .replace("<r>","<real>")
-    .replace("</r>","</real>")
-}
-
-fn concisify_plist(plist: &str) -> String {
-    plist
-    .replace("</dict>","</d>")
-    .replace("</key>","</k>")
-    .replace("<dict>","<d>")
-    .replace("<dict />","<d/>")
-    .replace("<key>","<k>")
-    .replace("<string>","<s>")
-    .replace("</string>","</s>")
-    .replace("<integer>","<i>")
-    .replace("</integer>","</i>")
-    .replace("<true />","<t/>")
-    .replace("<real>","<r>")
-    .replace("</real>","</r>")
-}
-
-fn get_local_level_plist() -> String {
+fn get_local_level_plist() -> Value {
     let raw_save_data = {
         let mut save_file = File::open(gd_path().join("CCLocalLevels.dat")).expect("No save file found!");
         let mut sd = Vec::new();
@@ -135,9 +103,22 @@ fn get_local_level_plist() -> String {
     if let Err(_) = decoder.read_to_string(&mut plist) {
         println!("Warning: Game save likely corrupted (gzip decode failed)");
     }
-    verbosify_plist(&plist)
+    Value::from_reader(Cursor::new(plist)).unwrap()
 }
 
-fn get_outer_levels() -> Vec<Level> {
+pub fn get_outer_levels() -> Vec<OuterLevel> {
     let plist = get_local_level_plist();
+    let levels: Vec<OuterLevel> = plist.as_dictionary().and_then(|dict| dict.get("LLM_01")).unwrap()
+        .as_dictionary().unwrap().into_iter().filter(|(key, _)| key.as_str() != "_isArr").map(|(_, val)| {
+            let mut builder = LevelBuilder::new();
+            let props = val.as_dictionary().unwrap();
+            if let Some(title) = props.get("k2") {
+                builder.with_name(title.as_string().unwrap().into());
+            }
+            if let Some(rev) = props.get("k46") {
+                builder.with_revision(rev.as_signed_integer().unwrap().into());
+            }
+            builder.build_outer_level().unwrap()
+        }).collect();
+    levels
 }
