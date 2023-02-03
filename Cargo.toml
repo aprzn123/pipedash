@@ -1,4 +1,4 @@
-[package]
+package]
 name = "pipedash"
 version = "0.1.0"
 edition = "2021"
@@ -6,7 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-iced = {version = "0.7.0"}
 rodio = {version = "0.16.0"}
 home = {version = "0.5.4"}
 base64 = {version = "0.21.0"}

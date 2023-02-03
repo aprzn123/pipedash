@@ -1,19 +1,22 @@
 mod gd;
 
-use iced::{
+/*use iced::{
     widget::{
         button, 
         column, 
         row, 
         text, 
         scrollable, 
-        radio::Radio,
-        Column
+        Column,
+        Row,
     },
-    Sandbox, 
+    Application, 
     Settings,
     Element,
     Alignment,
+    Theme,
+    executor,
+    Command,
 };
 use rodio::{
     source::Source,
@@ -21,12 +24,6 @@ use rodio::{
     OutputStream,
     Sink,
 };
-use std::{
-    fs::File,
-    io::BufReader,
-    path::PathBuf,
-};
-use gd::gd_path;
 
 
 struct Guider {
@@ -37,13 +34,16 @@ enum Message {
     Msg,
 }
 
-impl Sandbox for Guider {
+impl Application for Guider {
+    type Executor = executor::Default;
+    type Flags = ();
     type Message = Message;
-    fn new() -> Self {
-        Self {}
+    type Theme = Theme;
+    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
+        (Self {}, Command::none())
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<Self::Message> {
         // column![button("pause").on_press(Message::Pause), button("play").on_press(Message::Play)].into()
         row![
             scrollable(["lvl 1", "lvl 2", "lvl 3"].iter().fold(
@@ -51,7 +51,7 @@ impl Sandbox for Guider {
             )),
             column![
                 row![
-                    column![text("Title"), text("Song Title & ID")],
+                    column![text("Some Title Info?")],
                     column![
                         text("G"),
                         text("Y"),
@@ -61,13 +61,14 @@ impl Sandbox for Guider {
                 row![text("zoom in"), text("zoom out"), text("delete"), text("add"), text("edit")], 
                 text("view canvas"),
             ]
-        ].into()
+        ].align_items(Alignment::Fill).into()
     }
 
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Command<Self::Message> {
         match message {
             Message::Msg => {println!("Message received!")}
         }
+        Command::none()
     }
 
     fn title(&self) -> String {
@@ -80,3 +81,4 @@ fn main() -> iced::Result {
     println!("{:?}", gd::get_outer_levels());
     Guider::run(Settings::default())
 }
+*/
