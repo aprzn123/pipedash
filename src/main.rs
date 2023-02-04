@@ -1,5 +1,9 @@
 mod gd;
 
+use eframe;
+use eframe::egui;
+use std::boxed::Box;
+
 /*use iced::{
     widget::{
         button, 
@@ -76,9 +80,38 @@ impl Application for Guider {
     }
 }
 
-
-fn main() -> iced::Result {
-    println!("{:?}", gd::get_outer_levels());
-    Guider::run(Settings::default())
-}
 */
+
+struct PipeDash {
+    selected: Option<i32>,
+}
+
+impl PipeDash {
+    fn new(_cc: &eframe::CreationContext) -> Self {
+        Self {selected: None}
+    }
+}
+
+impl eframe::App for PipeDash {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        egui::SidePanel::left("level_picker").show(ctx, |ui| {
+            if ui.selectable_label(self.selected == Some(0), "lbl 1").clicked() {
+                self.selected = Some(0);
+            }
+            if ui.selectable_label(self.selected == Some(1), "lbl 2").clicked() {
+                self.selected = Some(1);
+            }
+        });
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.label("hello world!");
+        });
+    }
+}
+
+fn main() {
+    println!("{:?}", gd::get_outer_levels());
+    let app: PipeDash;
+    let opts = eframe::NativeOptions::default();
+    eframe::run_native("PipeDash", opts, Box::new(|cc| Box::new(PipeDash::new(cc))));
+}
+
