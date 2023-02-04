@@ -94,6 +94,7 @@ impl PipeDash {
 
 impl eframe::App for PipeDash {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        ctx.set_pixels_per_point(2f32);
         egui::SidePanel::left("level_picker").show(ctx, |ui| {
             if ui.selectable_label(self.selected == Some(0), "lbl 1").clicked() {
                 self.selected = Some(0);
