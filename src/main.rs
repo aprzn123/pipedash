@@ -3,6 +3,7 @@ mod gd;
 use eframe;
 use eframe::egui;
 use std::boxed::Box;
+use std::collections::VecDeque;
 
 /*use iced::{
     widget::{
@@ -83,29 +84,77 @@ impl Application for Guider {
 */
 
 struct PipeDash {
-    selected: Option<i32>,
+    selected_level: Option<i32>,
+    selected_color: Option<Color>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Color {
+    Orange,
+    Yellow,
+    Green,
+}
+
+#[derive(Debug)]
+enum Message {
+    ColorSelected(Color),
 }
 
 impl PipeDash {
     fn new(_cc: &eframe::CreationContext) -> Self {
-        Self {selected: None}
+        Self {
+            selected_level: None,
+            selected_color: None,
+        }
     }
 }
 
 impl eframe::App for PipeDash {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        let mut message_queue: VecDeque<Message> = VecDeque::new();
         ctx.set_pixels_per_point(2f32);
+
         egui::SidePanel::left("level_picker").show(ctx, |ui| {
-            if ui.selectable_label(self.selected == Some(0), "lbl 1").clicked() {
-                self.selected = Some(0);
+            if ui.selectable_label(self.selected_level == Some(0), "lbl 1").clicked() {
+                self.selected_level = Some(0);
             }
-            if ui.selectable_label(self.selected == Some(1), "lbl 2").clicked() {
-                self.selected = Some(1);
+            if ui.selectable_label(self.selected_level == Some(1), "lbl 2").clicked() {
+                self.selected_level = Some(1);
             }
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.label("hello world!");
+            ui.vertical_centered_justified(|ui| {
+                ui.horizontal_top(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label("Song name");
+                        ui.label("Song id");
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                        ui.vertical(|ui| {
+                            if ui.selectable_label(self.selected_color == Some(Color::Orange), "orange").clicked() {
+                                message_queue.push_back(Message::ColorSelected(Color::Orange));
+                            };
+                            if ui.selectable_label(self.selected_color == Some(Color::Yellow), "yellow").clicked() {
+                                message_queue.push_back(Message::ColorSelected(Color::Yellow));
+                            };
+                            if ui.selectable_label(self.selected_color == Some(Color::Green), "green").clicked() {
+                                message_queue.push_back(Message::ColorSelected(Color::Green));
+                            };
+                        });
+                    })
+                });
+                ui.label("custom editor panel goes here")
+            });
         });
+
+        for message in message_queue.drain(..) {
+            println!("{:?}", message);
+            match message {
+                Message::ColorSelected(color) => {
+                    self.selected_color = Some(color);
+                }
+            }
+        }
     }
 }
 
