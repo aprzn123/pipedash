@@ -4,6 +4,8 @@ use std::io::{Read, Cursor};
 use base64::engine::{general_purpose::URL_SAFE, Engine};
 use flate2::read::GzDecoder;
 use gd_plist::Value;
+use eframe::epaint::text::LayoutJob;
+use eframe::egui::TextFormat;
 
 struct User {
     name: String,
@@ -25,6 +27,44 @@ struct Level {
 pub struct OuterLevel {
     name: String, // k2
     revision: Option<i64>, // k46
+}
+
+impl OuterLevel {
+    pub fn load_all() -> Vec<OuterLevel> {
+        let plist = get_local_level_plist();
+        let levels: Vec<OuterLevel> = plist.as_dictionary().and_then(|dict| dict.get("LLM_01")).unwrap()
+            .as_dictionary().unwrap().into_iter().filter(|(key, _)| key.as_str() != "_isArr").map(|(_, val)| {
+                let mut builder = LevelBuilder::new();
+                let props = val.as_dictionary().unwrap();
+                if let Some(title) = props.get("k2") {
+                    builder.with_name(title.as_string().unwrap().into());
+                }
+                if let Some(rev) = props.get("k46") {
+                    builder.with_revision(rev.as_signed_integer().unwrap().into());
+                }
+                builder.build_outer_level().unwrap()
+            }).collect();
+        levels
+    }
+
+    pub fn display_name(&self) -> LayoutJob {
+        match self.revision {
+            Some(rev) => {
+                let mut job = LayoutJob::default();
+                job.append(&format!("{} ", self.name), 0f32, TextFormat::default());
+                job.append(&format!("(rev {})", rev), 0f32, TextFormat {
+                    italics: true,
+                    ..Default::default()
+                });
+                job
+            },
+            None => {
+                let mut job = LayoutJob::default();
+                job.append(&self.name, 0f32, TextFormat::default());
+                job
+            },
+        }
+    }
 }
 
 pub fn gd_path() -> PathBuf {
@@ -106,19 +146,3 @@ fn get_local_level_plist() -> Value {
     Value::from_reader(Cursor::new(plist)).unwrap()
 }
 
-pub fn get_outer_levels() -> Vec<OuterLevel> {
-    let plist = get_local_level_plist();
-    let levels: Vec<OuterLevel> = plist.as_dictionary().and_then(|dict| dict.get("LLM_01")).unwrap()
-        .as_dictionary().unwrap().into_iter().filter(|(key, _)| key.as_str() != "_isArr").map(|(_, val)| {
-            let mut builder = LevelBuilder::new();
-            let props = val.as_dictionary().unwrap();
-            if let Some(title) = props.get("k2") {
-                builder.with_name(title.as_string().unwrap().into());
-            }
-            if let Some(rev) = props.get("k46") {
-                builder.with_revision(rev.as_signed_integer().unwrap().into());
-            }
-            builder.build_outer_level().unwrap()
-        }).collect();
-    levels
-}
