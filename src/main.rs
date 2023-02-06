@@ -1,4 +1,5 @@
 mod gd;
+mod music;
 
 use eframe;
 use eframe::egui;
@@ -30,6 +31,9 @@ enum Message {
 struct Editor {
     scroll_pos: f32,
     pts_per_second: f32,
+    beats_per_bar: f32,
+    subdivisions: f32,
+    beat_rate: music::BeatRate,
 }
 
 type EditorWidget<'a> = &'a mut Editor;
@@ -67,6 +71,9 @@ impl PipeDash {
             editor: Editor {
                 scroll_pos: 0f32,
                 pts_per_second: 5f32,
+                beats_per_bar: 4.0,
+                subdivisions: 4.0,
+                beat_rate: music::StaticBeatRate::from_bpm(120f32).into(),
             }
         }
     }
