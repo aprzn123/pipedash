@@ -71,26 +71,23 @@ impl PipeDash {
         }
     }
 
-}
-
-impl eframe::App for PipeDash {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        use Message::*;
-        use Color::*;
-        ctx.set_pixels_per_point(2f32);
-
+    fn side_panel(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         egui::SidePanel::left("level_picker").default_width(100f32).show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                     for (idx, level) in self.level_list.iter().enumerate() {
                         if ui.selectable_label(self.selected_level == Some(idx), level.display_name()).clicked() {
-                            self.msg_queue.push_back(LevelSelected(idx));
+                            self.msg_queue.push_back(Message::LevelSelected(idx));
                         }
                     }
                 })
             });
         });
+    }
 
+    fn center_panel(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        use Message::*;
+        use Color::*;
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered_justified(|ui| {
                 ui.horizontal_top(|ui| {
@@ -115,7 +112,9 @@ impl eframe::App for PipeDash {
                 ui.add(self.editor.widget());
             });
         });
+    }
 
+    fn handle_messages(&mut self) {
         for message in self.msg_queue.drain(..) {
             println!("{:?}", message);
             match message {
@@ -127,6 +126,17 @@ impl eframe::App for PipeDash {
                 },
             }
         }
+    }
+}
+
+impl eframe::App for PipeDash {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        ctx.set_pixels_per_point(2f32);
+
+        self.side_panel(ctx, frame);
+        self.center_panel(ctx, frame);
+
+        self.handle_messages();
     }
 }
 
