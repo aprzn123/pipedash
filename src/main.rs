@@ -32,11 +32,11 @@ struct Editor {
     pts_per_second: f32,
 }
 
-struct EditorWidget<'a> { editor: &'a mut Editor }
+type EditorWidget<'a> = &'a mut Editor;
 
 impl Editor {
     pub fn widget(&mut self) -> EditorWidget {
-        EditorWidget { editor: self }
+        self
     }
 }
 
