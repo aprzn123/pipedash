@@ -11,6 +11,7 @@ struct PipeDash {
     selected_level: Option<usize>,
     selected_color: Option<Color>,
     level_list: Vec<gd::OuterLevel>,
+    editor: Editor,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -26,6 +27,35 @@ enum Message {
     LevelSelected(usize),
 }
 
+struct Editor {
+    scroll_pos: f32,
+    pts_per_second: f32,
+}
+
+struct EditorWidget<'a> { editor: &'a mut Editor }
+
+impl Editor {
+    pub fn widget(&mut self) -> EditorWidget {
+        EditorWidget { editor: self }
+    }
+}
+
+impl<'a> egui::Widget for EditorWidget<'a> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        // 1. choose size
+        let max_rect = ui.max_rect();
+        let preferred_size = max_rect.size();
+        // 2. allocate space
+        let (rect, res) = ui.allocate_exact_size(preferred_size, egui::Sense::click_and_drag());
+        // 3. handle interactions
+        // 4. draw widget
+        if ui.is_rect_visible(rect) {
+            ui.painter().rect_filled(rect, 0f32, eframe::epaint::Color32::from_gray(0));
+        }
+        res
+    }
+}
+
 
 impl PipeDash {
     fn new(_cc: &eframe::CreationContext) -> Self {
@@ -34,6 +64,10 @@ impl PipeDash {
             selected_color: None,
             msg_queue: VecDeque::new(),
             level_list: gd::OuterLevel::load_all(),
+            editor: Editor {
+                scroll_pos: 0f32,
+                pts_per_second: 5f32,
+            }
         }
     }
 
@@ -78,7 +112,7 @@ impl eframe::App for PipeDash {
                         });
                     })
                 });
-                ui.label("custom editor panel goes here")
+                ui.add(self.editor.widget());
             });
         });
 
