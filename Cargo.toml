@@ -13,3 +13,4 @@ base64 = {version = "0.21.0"}
 flate2 = {version = "1.0.25"}
 gd_plist = {git = "https://github.com/Syudagye/gd-plist.git", version = "1.4.0"}
 chrono = {version = "0.4.23"}
+ordered-float = {version = "3.4.0"}
