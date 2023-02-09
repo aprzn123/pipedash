@@ -1,6 +1,3 @@
-// TODO: SWITCH BEAT RATE TO CHANGE ON BEATS INSTEAD OF DURATIONS, 
-// TODO: BECAUSE THAT WAS A STUPID IDEA
-
 use chrono::Duration;
 use std::collections::BTreeMap;
 use ordered_float::OrderedFloat as Float;
@@ -22,6 +19,7 @@ pub struct TimeSignature {
     changes: BTreeMap<BeatPosition, StaticTimeSignature>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct StaticTimeSignature {
     numerator: u32,
     denominator: u32,
@@ -62,8 +60,11 @@ impl BeatRate {
     }
 }
 
+/// Changes: when the time signature changes, the bar immediately resets
 impl StaticTimeSignature {
     pub fn new(numerator: u32, denominator: u32) -> Self {Self {numerator, denominator}}
+
+    fn beats_per_bar(&self) -> BeatPosition {(self.numerator as f32).into()}
 }
 
 impl From<StaticTimeSignature> for TimeSignature {
@@ -71,6 +72,39 @@ impl From<StaticTimeSignature> for TimeSignature {
         Self {
             initial: rhs,
             changes: BTreeMap::new(),
+        }
+    }
+}
+
+impl TimeSignature {
+    pub fn add_change(&mut self, position: BeatPosition, signature: StaticTimeSignature) {
+        self.changes.insert(position, signature);
+    }
+
+    pub fn at_beat(&self, pos: BeatPosition) -> StaticTimeSignature {
+        match self.changes.first_key_value() {
+            Some((first_change, _)) => {
+                if &pos < first_change {
+                    self.initial
+                } else {
+                    *self.changes.iter().rev().find(|&el| el.0 <= &pos).unwrap().1
+                }
+            },
+            none => self.initial,
+        }
+    }
+
+    pub fn position_in_bar(&self, pos: BeatPosition) -> BeatPosition {
+        match self.changes.first_key_value() {
+            Some((first_change, first_change_sig)) => {
+                if &pos < first_change {
+                    pos % self.initial.beats_per_bar()
+                } else {
+                    let (signature_start_point, signature) = self.changes.iter().rev().find(|&el| el.0 <= &pos).unwrap();
+                    (pos - signature_start_point) % signature.beats_per_bar()
+                }
+            },
+            None => pos % self.initial.beats_per_bar(),
         }
     }
 }
