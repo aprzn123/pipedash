@@ -17,6 +17,16 @@ pub struct BeatRate {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct StaticBeatRate(Duration);
 
+pub struct TimeSignature {
+    initial: StaticTimeSignature,
+    changes: BTreeMap<BeatPosition, StaticTimeSignature>,
+}
+
+pub struct StaticTimeSignature {
+    numerator: u32,
+    denominator: u32,
+}
+
 
 impl StaticBeatRate {
     pub fn from_bpm(bpm: f32) -> Self {
@@ -51,6 +61,20 @@ impl BeatRate {
         self.changes.insert(new_pos, new_rate);
     }
 }
+
+impl StaticTimeSignature {
+    pub fn new(numerator: u32, denominator: u32) -> Self {Self {numerator, denominator}}
+}
+
+impl From<StaticTimeSignature> for TimeSignature {
+    fn from(rhs: StaticTimeSignature) -> Self {
+        Self {
+            initial: rhs,
+            changes: BTreeMap::new(),
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
