@@ -1,6 +1,6 @@
 use chrono::Duration;
-use std::collections::BTreeMap;
 use ordered_float::OrderedFloat as Float;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub type BeatPosition = Float<f32>;
 
@@ -25,6 +25,10 @@ pub struct StaticTimeSignature {
     denominator: u32,
 }
 
+#[derive(Default)]
+pub struct Lines {
+    positions: BTreeSet<BeatPosition>,
+}
 
 impl StaticBeatRate {
     pub fn from_bpm(bpm: f32) -> Self {
@@ -48,13 +52,19 @@ impl BeatRate {
                 if &pos < first_change {
                     self.initial
                 } else {
-                    *self.changes.iter().rev().find(|&el| el.0 <= &pos).unwrap().1
+                    *self
+                        .changes
+                        .iter()
+                        .rev()
+                        .find(|&el| el.0 <= &pos)
+                        .unwrap()
+                        .1
                 }
-            },
+            }
             None => self.initial,
         }
     }
-    
+
     pub fn add_change(&mut self, new_pos: BeatPosition, new_rate: StaticBeatRate) {
         self.changes.insert(new_pos, new_rate);
     }
@@ -62,9 +72,16 @@ impl BeatRate {
 
 /// Changes: when the time signature changes, the bar immediately resets
 impl StaticTimeSignature {
-    pub fn new(numerator: u32, denominator: u32) -> Self {Self {numerator, denominator}}
+    pub fn new(numerator: u32, denominator: u32) -> Self {
+        Self {
+            numerator,
+            denominator,
+        }
+    }
 
-    fn beats_per_bar(&self) -> BeatPosition {(self.numerator as f32).into()}
+    fn beats_per_bar(&self) -> BeatPosition {
+        (self.numerator as f32).into()
+    }
 }
 
 impl From<StaticTimeSignature> for TimeSignature {
@@ -87,28 +104,52 @@ impl TimeSignature {
                 if &pos < first_change {
                     self.initial
                 } else {
-                    *self.changes.iter().rev().find(|&el| el.0 <= &pos).unwrap().1
+                    *self
+                        .changes
+                        .iter()
+                        .rev()
+                        .find(|&el| el.0 <= &pos)
+                        .unwrap()
+                        .1
                 }
-            },
+            }
             none => self.initial,
         }
     }
 
     pub fn position_in_bar(&self, pos: BeatPosition) -> BeatPosition {
         match self.changes.first_key_value() {
-            Some((first_change, first_change_sig)) => {
+            Some((first_change, _)) => {
                 if &pos < first_change {
                     pos % self.initial.beats_per_bar()
                 } else {
-                    let (signature_start_point, signature) = self.changes.iter().rev().find(|&el| el.0 <= &pos).unwrap();
+                    let (signature_start_point, signature) =
+                        self.changes.iter().rev().find(|&el| el.0 <= &pos).unwrap();
                     (pos - signature_start_point) % signature.beats_per_bar()
                 }
-            },
+            }
             None => pos % self.initial.beats_per_bar(),
         }
     }
 }
 
+impl Lines {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, pos: BeatPosition) -> bool {
+        self.positions.insert(pos)
+    }
+
+    pub fn remove(&mut self, pos: BeatPosition) -> bool {
+        self.positions.remove(&pos)
+    }
+
+    pub fn get_positions(&mut self) -> &BTreeSet<BeatPosition> {
+        &self.positions
+    }
+}
 
 #[cfg(test)]
 mod tests {
