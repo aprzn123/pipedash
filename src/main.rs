@@ -5,8 +5,6 @@ use eframe;
 use eframe::egui;
 use std::boxed::Box;
 use std::collections::VecDeque;
-use std::marker::PhantomData;
-use symphonia::core::io::{MediaSource, MediaSourceStream};
 
 struct PipeDash {
     msg_queue: VecDeque<Message>,
@@ -29,10 +27,14 @@ enum Message {
 }
 
 struct Editor {
-    scroll_pos: f32,
-    pts_per_second: f32,
-    subdivisions: f32,
+    state: EditorState,
     data: GdlData,
+}
+
+struct EditorState {
+    scroll_pos: f32,
+    pts_per_second: f32, // zoom level
+    subdivisions: f32,
 }
 
 struct GdlData {
@@ -46,20 +48,30 @@ struct GdlData {
 struct Song {
     name: String,
     id: u32,
-    stream: MediaSourceStream,
 }
 
-struct Orange;
-struct Yellow;
-struct Green;
+struct BeatRateWidget<'a> {
+    state: &'a mut EditorState,
+    beat_rate: &'a mut music::BeatRate,
+}
+struct TimeSignatureWidget<'a> {
+    state: &'a mut EditorState,
+    time_signatures: &'a mut music::TimeSignature,
+}
+struct LinesWidget<'a> {
+    state: &'a mut EditorState,
+    lines: &'a mut music::Lines,
+    color: Color,
+}
+struct WaveformWidget<'a> {
+    state: &'a mut EditorState,
+    song: &'a Song,
+}
 
-struct BeatRateWidget<'a>(&'a mut Editor);
-struct TimeSignatureWidget<'a>(&'a mut Editor);
-struct LinesWidget<'a, C: WithColor>(&'a mut Editor, PhantomData<C>);
-struct WaveformWidget<'a>(&'a mut Editor);
-
-trait WithColor {
-    const COLOR: Color;
+fn allocate_editor_space(ui: &mut egui::Ui) -> (egui::Rect, egui::Response) {
+    let max_rect = ui.max_rect();
+    let preferred_size = egui::Vec2::new(max_rect.size().x, 60.0);
+    ui.allocate_exact_size(preferred_size, egui::Sense::click_and_drag())
 }
 
 impl From<Color> for eframe::epaint::Color32 {
@@ -72,43 +84,46 @@ impl From<Color> for eframe::epaint::Color32 {
     }
 }
 
-impl WithColor for Orange {
-    const COLOR: Color = Color::Orange;
-}
-impl WithColor for Yellow {
-    const COLOR: Color = Color::Yellow;
-}
-impl WithColor for Green {
-    const COLOR: Color = Color::Green;
-}
-
 impl Editor {
     pub fn beat_rate_widget(&mut self) -> BeatRateWidget {
-        BeatRateWidget(self)
+        BeatRateWidget {
+            state: &mut self.state,
+            beat_rate: &mut self.data.beat_rate,
+        }
     }
 
     pub fn time_signature_widget(&mut self) -> TimeSignatureWidget {
-        TimeSignatureWidget(self)
+        TimeSignatureWidget {
+            state: &mut self.state,
+            time_signatures: &mut self.data.time_signatures,
+        }
     }
 
-    pub fn lines_widget<C: WithColor>(&mut self) -> LinesWidget<C> {
-        LinesWidget(self, Default::default())
+    pub fn lines_widget(&mut self, col: Color) -> LinesWidget {
+        LinesWidget {
+            state: &mut self.state,
+            lines: match col {
+                Color::Green => &mut self.data.green_lines,
+                Color::Yellow => &mut self.data.yellow_lines,
+                Color::Orange => &mut self.data.orange_lines,
+            },
+            color: col,
+        }
     }
 
-    pub fn waveform_widget(&mut self) -> WaveformWidget {
-        WaveformWidget(self)
+    pub fn waveform_widget<'a>(&'a mut self, song: &'a Song) -> WaveformWidget {
+        WaveformWidget {
+            state: &mut self.state,
+            song,
+        }
     }
 }
 
 impl<'a> egui::Widget for BeatRateWidget<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        // 1. choose size
-        let max_rect = ui.max_rect();
-        let preferred_size = egui::Vec2::new(max_rect.size().x, 60.0);
-        // 2. allocate space
-        let (rect, res) = ui.allocate_exact_size(preferred_size, egui::Sense::click_and_drag());
-        // 3. handle interactions
-        // 4. draw widget
+        let (rect, res) = allocate_editor_space(ui);
+        // handle interactions
+        // draw widget
         if ui.is_rect_visible(rect) {
             ui.painter()
                 .rect_filled(rect, 0f32, eframe::epaint::Color32::from_gray(0));
@@ -134,7 +149,7 @@ impl<'a> egui::Widget for TimeSignatureWidget<'a> {
     }
 }
 
-impl<'a, C: WithColor> egui::Widget for LinesWidget<'a, C> {
+impl<'a> egui::Widget for LinesWidget<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         // 1. choose size
         let max_rect = ui.max_rect();
@@ -176,9 +191,11 @@ impl PipeDash {
             level_list: gd::OuterLevel::load_all(),
             loaded_song: None,
             editor: Editor {
-                scroll_pos: 0f32,
-                pts_per_second: 5f32,
-                subdivisions: 4.0,
+                state: EditorState {
+                    scroll_pos: 0f32,
+                    pts_per_second: 5f32,
+                    subdivisions: 4.0,
+                },
                 data: GdlData {
                     beat_rate: music::StaticBeatRate::from_bpm(120f32).into(),
                     time_signatures: music::StaticTimeSignature::new(4, 4).into(),
@@ -233,12 +250,14 @@ impl PipeDash {
                     .size(20.0),
                 );
 
-                ui.add(self.editor.time_signature_widget());
-                ui.add(self.editor.beat_rate_widget());
-                ui.add(self.editor.lines_widget::<Green>());
-                ui.add(self.editor.lines_widget::<Yellow>());
-                ui.add(self.editor.lines_widget::<Orange>());
-                ui.add(self.editor.waveform_widget());
+                if let Some(song) = &self.loaded_song {
+                    ui.add(self.editor.time_signature_widget());
+                    ui.add(self.editor.beat_rate_widget());
+                    ui.add(self.editor.lines_widget(Color::Green));
+                    ui.add(self.editor.lines_widget(Color::Orange));
+                    ui.add(self.editor.lines_widget(Color::Yellow));
+                    ui.add(self.editor.waveform_widget(&song));
+                }
             });
         });
     }
