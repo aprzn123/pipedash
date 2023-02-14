@@ -55,8 +55,8 @@ impl BeatRate {
                     *self
                         .changes
                         .iter()
-                        .rev()
-                        .find(|&el| el.0 <= &pos)
+                        .filter(|&el| el.0 <= &pos)
+                        .last()
                         .unwrap()
                         .1
                 }
@@ -107,8 +107,8 @@ impl TimeSignature {
                     *self
                         .changes
                         .iter()
-                        .rev()
-                        .find(|&el| el.0 <= &pos)
+                        .filter(|&el| el.0 <= &pos)
+                        .last()
                         .unwrap()
                         .1
                 }
