@@ -3,9 +3,12 @@ use eframe::egui::TextFormat;
 use eframe::epaint::text::LayoutJob;
 use flate2::read::GzDecoder;
 use gd_plist::Value;
+use reqwest::blocking as req;
 use std::fs::File;
 use std::io::{Cursor, Read};
+use std::num::ParseIntError;
 use std::path::PathBuf;
+use thiserror::Error;
 
 struct User {
     name: String,
@@ -18,6 +21,8 @@ pub enum Song {
     Unknown,
 }
 
+pub struct SongResponse([String; 9]);
+
 struct Level {
     outer: OuterLevel,
     song: Song,
@@ -27,6 +32,42 @@ struct Level {
 pub struct OuterLevel {
     name: String,          // k2
     revision: Option<i64>, // k46
+}
+
+#[derive(Debug, Error)]
+pub enum SongRequestError {
+    #[error("Request failed")]
+    ConnectionFailure(#[from] reqwest::Error),
+    #[error("Index is not an int?????")]
+    ParseFailure(#[from] ParseIntError),
+    #[error("Not a Newgrounds song")]
+    NotNewgrounds,
+}
+
+impl Song {
+    pub fn get_response(&self) -> Result<SongResponse, SongRequestError> {
+        match self {
+            Self::Newgrounds { id } => {
+                let mut out = SongResponse(Default::default());
+                req::Client::new()
+                    .post("http://boomlings.com/database/getGJSongInfo.php")
+                    .body(format!(
+                        r#" {{ "secret": "Wmfd2893gb7", "songID": {} }} "#,
+                        id
+                    ))
+                    .send()?
+                    .text()?
+                    .split("~|~")
+                    .array_chunks()
+                    .try_for_each(|[id, value]| -> Result<(), SongRequestError> {
+                        out.0[id.parse::<usize>()?] = value.into();
+                        Ok(())
+                    })
+                    .map(|_| out)
+            }
+            _ => Err(SongRequestError::NotNewgrounds),
+        }
+    }
 }
 
 impl OuterLevel {

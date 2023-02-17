@@ -15,3 +15,4 @@ gd_plist = {git = "https://github.com/Syudagye/gd-plist.git", version = "1.4.0"}
 chrono = {version = "0.4.23"}
 ordered-float = {version = "3.4.0"}
 thiserror = {version = "1.0.38"}
+reqwest = {version = "0.11.14", features = [ "blocking" ]}

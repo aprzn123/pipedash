@@ -1,3 +1,5 @@
+#![feature(iter_array_chunks)]
+
 mod gd;
 mod music;
 
@@ -109,10 +111,12 @@ impl Song {
                     File::open(path)
                 };
                 match file_result {
-                    Ok(file) => {
-                        Ok(Song { name: unimplemented!(), id, decoder: unimplemented!() })
-                    }
-                    Err(err) => Err(SongError::MissingFile)
+                    Ok(file) => Ok(Song {
+                        name: unimplemented!(),
+                        id,
+                        decoder: unimplemented!(),
+                    }),
+                    Err(err) => Err(SongError::MissingFile),
                 }
             }
         }
