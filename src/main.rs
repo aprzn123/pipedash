@@ -5,6 +5,8 @@ use eframe;
 use eframe::egui;
 use std::boxed::Box;
 use std::collections::VecDeque;
+use std::fs::File;
+use thiserror::Error;
 
 struct PipeDash {
     msg_queue: VecDeque<Message>,
@@ -47,7 +49,18 @@ struct GdlData {
 
 struct Song {
     name: String,
-    id: u32,
+    id: i32,
+    decoder: rodio::Decoder<File>,
+}
+
+#[derive(Error, Debug)]
+enum SongError {
+    #[error("Unknown song")]
+    Unknown,
+    #[error("Official level song")]
+    Official,
+    #[error("Song mp3 not downloaded")]
+    MissingFile,
 }
 
 struct BeatRateWidget<'a> {
@@ -80,6 +93,28 @@ impl From<Color> for eframe::epaint::Color32 {
             Color::Green => Self::from_rgb(0, 255, 0),
             Color::Orange => Self::from_rgb(255, 127, 0),
             Color::Yellow => Self::from_rgb(255, 255, 0),
+        }
+    }
+}
+
+impl Song {
+    pub fn try_new(gd_song: gd::Song) -> Result<Self, SongError> {
+        match gd_song {
+            gd::Song::Official { id: _ } => Err(SongError::Official),
+            gd::Song::Unknown => Err(SongError::Unknown),
+            gd::Song::Newgrounds { id } => {
+                let file_result = {
+                    let mut path = gd::gd_path();
+                    path.push(format!("{}.mp3", id));
+                    File::open(path)
+                };
+                match file_result {
+                    Ok(file) => {
+                        Ok(Song { name: unimplemented!(), id, decoder: unimplemented!() })
+                    }
+                    Err(err) => Err(SongError::MissingFile)
+                }
+            }
         }
     }
 }

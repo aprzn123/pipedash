@@ -12,7 +12,7 @@ struct User {
     id: Option<u64>,
 }
 
-enum Song {
+pub enum Song {
     Official { id: i32 /*k8*/ },
     Newgrounds { id: i32 /*k45*/ },
     Unknown,
