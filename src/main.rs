@@ -57,12 +57,14 @@ struct Song {
 
 #[derive(Error, Debug)]
 enum SongError {
-    #[error("Unknown song")]
-    Unknown,
-    #[error("Official level song")]
-    Official,
+    #[error("Not a Newgrounds song")]
+    NotNewgrounds,
     #[error("Song mp3 not downloaded")]
-    MissingFile,
+    MissingFile(#[from] std::io::Error),
+    #[error("Couldn't decode mp3 file")]
+    BrokenSong(#[from] rodio::decoder::DecoderError),
+    #[error("Couldn't access song data on servers")]
+    ServerError(#[from] gd::SongRequestError)
 }
 
 struct BeatRateWidget<'a> {
@@ -101,24 +103,21 @@ impl From<Color> for eframe::epaint::Color32 {
 
 impl Song {
     pub fn try_new(gd_song: gd::Song) -> Result<Self, SongError> {
-        match gd_song {
-            gd::Song::Official { id: _ } => Err(SongError::Official),
-            gd::Song::Unknown => Err(SongError::Unknown),
+        match &gd_song {
             gd::Song::Newgrounds { id } => {
-                let file_result = {
-                    let mut path = gd::gd_path();
-                    path.push(format!("{}.mp3", id));
-                    File::open(path)
-                };
-                match file_result {
-                    Ok(file) => Ok(Song {
-                        name: unimplemented!(),
-                        id,
-                        decoder: unimplemented!(),
-                    }),
-                    Err(err) => Err(SongError::MissingFile),
-                }
-            }
+                let song_data = gd_song.get_response()?;
+                file::open(gd::gd_path().join(format!("{}.mp3", id)))
+                     .or_else(|_| {
+
+                     })
+                todo!("if file is missing, try to download it from the SongResponse. If that fails, return an error. Otherwise, return file info")
+                // Ok(Song {
+                //     name: todo!(),
+                //     id,
+                //     decoder: rodio::Decoder::new_mp3(file)?
+                // })
+            },
+            _ => Err(SongError::NotNewgrounds)
         }
     }
 }

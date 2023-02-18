@@ -21,7 +21,7 @@ pub enum Song {
     Unknown,
 }
 
-pub struct SongResponse([String; 9]);
+pub struct SongResponse([Option<String>; 9]);
 
 struct Level {
     outer: OuterLevel,
@@ -60,7 +60,7 @@ impl Song {
                     .split("~|~")
                     .array_chunks()
                     .try_for_each(|[id, value]| -> Result<(), SongRequestError> {
-                        out.0[id.parse::<usize>()?] = value.into();
+                        out.0[id.parse::<usize>()?] = Some(value.into());
                         Ok(())
                     })
                     .map(|_| out)
