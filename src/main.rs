@@ -8,7 +8,9 @@ use eframe::egui;
 use std::boxed::Box;
 use std::collections::VecDeque;
 use std::fs::File;
+use std::io::Write;
 use thiserror::Error;
+use reqwest::blocking as req;
 
 struct PipeDash {
     msg_queue: VecDeque<Message>,
@@ -59,12 +61,16 @@ struct Song {
 enum SongError {
     #[error("Not a Newgrounds song")]
     NotNewgrounds,
-    #[error("Song mp3 not downloaded")]
+    #[error("Song mp3 couldn't be downloaded")]
     MissingFile(#[from] std::io::Error),
     #[error("Couldn't decode mp3 file")]
     BrokenSong(#[from] rodio::decoder::DecoderError),
     #[error("Couldn't access song data on servers")]
-    ServerError(#[from] gd::SongRequestError)
+    GdServerError(#[from] gd::SongRequestError),
+    #[error("Couldn't fetch song from Newgrounds")]
+    NgServerError(#[from] reqwest::Error),
+    #[error("Missing download link")]
+    MissingLink,
 }
 
 struct BeatRateWidget<'a> {
@@ -105,19 +111,31 @@ impl Song {
     pub fn try_new(gd_song: gd::Song) -> Result<Self, SongError> {
         match &gd_song {
             gd::Song::Newgrounds { id } => {
-                let song_data = gd_song.get_response()?;
-                file::open(gd::gd_path().join(format!("{}.mp3", id)))
-                     .or_else(|_| {
-
-                     })
-                todo!("if file is missing, try to download it from the SongResponse. If that fails, return an error. Otherwise, return file info")
-                // Ok(Song {
-                //     name: todo!(),
-                //     id,
-                //     decoder: rodio::Decoder::new_mp3(file)?
-                // })
-            },
-            _ => Err(SongError::NotNewgrounds)
+                let song_response = gd_song.get_response();
+                let song_path = gd::gd_path().join(format!("{}.mp3", id));
+                File::open(&song_path)
+                    .or_else(|_| song_response
+                         .clone()
+                        .map_err(|e| e.into())
+                        .and_then(|response: gd::SongResponse| -> Result<File, SongError> {
+                            let song_blob = response.download_link()
+                                .ok_or(SongError::MissingLink)
+                                .and_then(|link| Ok(req::get(link)?.bytes()?))?;
+                            let mut file = File::open(&song_path)?;
+                            file.write(&song_blob);
+                            Ok(file)
+                        })
+                    )
+                    .and_then(|file| {
+                        let name = song_response
+                            .ok()
+                            .and_then(|response| response.name())
+                            .unwrap_or("".into());
+                        let decoder = rodio::Decoder::new_mp3(file)?;
+                        Ok(Song {name, id: *id, decoder})
+                    })
+            }
+            _ => Err(SongError::NotNewgrounds),
         }
     }
 }

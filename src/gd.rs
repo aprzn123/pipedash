@@ -21,6 +21,7 @@ pub enum Song {
     Unknown,
 }
 
+#[derive(Clone)]
 pub struct SongResponse([Option<String>; 9]);
 
 struct Level {
@@ -34,14 +35,18 @@ pub struct OuterLevel {
     revision: Option<i64>, // k46
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum SongRequestError {
     #[error("Request failed")]
-    ConnectionFailure(#[from] reqwest::Error),
+    ConnectionFailure,
     #[error("Index is not an int?????")]
     ParseFailure(#[from] ParseIntError),
     #[error("Not a Newgrounds song")]
     NotNewgrounds,
+}
+
+impl From<reqwest::Error> for SongRequestError {
+    fn from(_: reqwest::Error) -> Self {Self::ConnectionFailure}
 }
 
 impl Song {
@@ -60,13 +65,43 @@ impl Song {
                     .split("~|~")
                     .array_chunks()
                     .try_for_each(|[id, value]| -> Result<(), SongRequestError> {
-                        out.0[id.parse::<usize>()?] = Some(value.into());
+                        out.0[id.parse::<usize>()? - 1] = Some(value.into());
                         Ok(())
                     })
                     .map(|_| out)
             }
             _ => Err(SongRequestError::NotNewgrounds),
         }
+    }
+}
+
+impl SongResponse {
+    pub fn id(&self) -> Option<i32> {
+        self.0[0].and_then(|s| s.parse().ok())
+    }
+    pub fn name(&self) -> Option<String> {
+        self.0[1]
+    }
+    pub fn artist_id(&self) -> Option<i32> {
+        self.0[2].and_then(|s| s.parse().ok())
+    }
+    pub fn artist_name(&self) -> Option<String> {
+        self.0[3]
+    }
+    pub fn size(&self) -> Option<i32> {
+        self.0[4].and_then(|s| s.parse().ok())
+    }
+    pub fn video_id(&self) -> Option<String> {
+        self.0[5]
+    }
+    pub fn youtube_url(&self) -> Option<String> {
+        self.0[6]
+    }
+    pub fn song_priority(&self) -> Option<i32> {
+        self.0[8].and_then(|s| s.parse().ok())
+    }
+    pub fn download_link(&self) -> Option<String> {
+        self.0[9].and_then(|url| urlencoding::decode(&url).ok().map(|url| url.into_owned()))
     }
 }
 
