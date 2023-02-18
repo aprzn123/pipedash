@@ -1,9 +1,9 @@
 #![feature(iter_array_chunks)]
+//#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
 
 mod gd;
 mod music;
 
-use eframe;
 use eframe::egui;
 use reqwest::blocking as req;
 use std::boxed::Box;
@@ -109,40 +109,42 @@ impl From<Color> for eframe::epaint::Color32 {
 
 impl Song {
     pub fn try_new(gd_song: gd::Song) -> Result<Self, SongError> {
-        if let gd::Song::Newgrounds { id } = &gd_song {
+        if let gd::Song::Newgrounds { id } = gd_song {
             let song_response = gd_song.get_response();
-            let song_path = gd::gd_path().join(format!("{}.mp3", id));
-            File::open(&song_path)
-                .or_else(|_| {
-                    song_response.clone().map_err(|e| e.into()).and_then(
-                        |response: gd::SongResponse| -> Result<File, SongError> {
-                            let song_blob = response
-                                .download_link()
-                                .ok_or(SongError::MissingLink)
-                                .and_then(|link| Ok(req::get(link)?.bytes()?))?;
-                            let mut file = File::open(&song_path)?;
-                            file.write(&song_blob);
-                            Ok(file)
-                        },
-                    )
-                })
-                .and_then(|file| {
-                    let name = song_response
+            let song_path = gd::save_path().join(format!("{id}.mp3"));
+
+            let (file, name) = match (File::open(&song_path), song_response) {
+                (Ok(file), response) => {
+                    let name = response
                         .ok()
-                        .and_then(|response| response.name())
-                        .unwrap_or("".into());
-                    let decoder = rodio::Decoder::new_mp3(file)?;
-                    Ok(Song {
-                        name,
-                        id: *id,
-                        decoder,
-                    })
-                })
+                        .and_then(|response| response.name().map(Into::into))
+                        .unwrap_or_default();
+
+                    (file, name)
+                }
+                (Err(_), Ok(response)) => {
+                    let song_blob = response
+                        .download_link()
+                        .ok_or(SongError::MissingLink)
+                        .and_then(|link| Ok(req::get(link)?.bytes()?))?;
+
+                    let mut file = File::open(&song_path)?;
+                    file.write_all(&song_blob)?;
+
+                    (file, response.name().unwrap_or("").into())
+                }
+                (Err(err), Err(_)) => return Err(err.into()),
+            };
+
+            let decoder = rodio::Decoder::new_mp3(file)?;
+            
+            Ok(Self { name, id, decoder })
         } else {
             Err(SongError::NotNewgrounds)
         }
     }
 }
+
 
 impl Editor {
     pub fn beat_rate_widget(&mut self) -> BeatRateWidget {
@@ -316,7 +318,7 @@ impl PipeDash {
                     ui.add(self.editor.lines_widget(Color::Green));
                     ui.add(self.editor.lines_widget(Color::Orange));
                     ui.add(self.editor.lines_widget(Color::Yellow));
-                    ui.add(self.editor.waveform_widget(&song));
+                    ui.add(self.editor.waveform_widget(song));
                 }
             });
         });
@@ -324,7 +326,7 @@ impl PipeDash {
 
     fn handle_messages(&mut self) {
         for message in self.msg_queue.drain(..) {
-            println!("{:?}", message);
+            println!("{message:?}");
             match message {
                 Message::LevelSelected(idx) => {
                     self.selected_level = Some(idx);

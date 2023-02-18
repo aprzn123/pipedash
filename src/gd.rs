@@ -59,8 +59,7 @@ impl Song {
                 req::Client::new()
                     .post("http://boomlings.com/database/getGJSongInfo.php")
                     .body(format!(
-                        r#" {{ "secret": "Wmfd2893gb7", "songID": {} }} "#,
-                        id
+                        r#" {{ "secret": "Wmfd2893gb7", "songID": {id} }} "#,
                     ))
                     .send()?
                     .text()?
@@ -79,38 +78,38 @@ impl Song {
 
 impl SongResponse {
     pub fn id(&self) -> Option<i32> {
-        self.0[0].and_then(|s| s.parse().ok())
+        self.0[0].as_deref().and_then(|s| s.parse().ok())
     }
-    pub fn name(&self) -> Option<String> {
-        self.0[1]
+    pub fn name(&self) -> Option<&str> {
+        self.0[1].as_deref()
     }
     pub fn artist_id(&self) -> Option<i32> {
-        self.0[2].and_then(|s| s.parse().ok())
+        self.0[2].as_deref().and_then(|s| s.parse().ok())
     }
-    pub fn artist_name(&self) -> Option<String> {
-        self.0[3]
+    pub fn artist_name(&self) -> Option<&str> {
+        self.0[3].as_deref()
     }
     pub fn size(&self) -> Option<i32> {
-        self.0[4].and_then(|s| s.parse().ok())
+        self.0[4].as_deref().and_then(|s| s.parse().ok())
     }
-    pub fn video_id(&self) -> Option<String> {
-        self.0[5]
+    pub fn video_id(&self) -> Option<&str> {
+        self.0[5].as_deref()
     }
-    pub fn youtube_url(&self) -> Option<String> {
-        self.0[6]
+    pub fn youtube_url(&self) -> Option<&str> {
+        self.0[6].as_deref()
     }
     pub fn song_priority(&self) -> Option<i32> {
-        self.0[8].and_then(|s| s.parse().ok())
+        self.0[8].as_deref().and_then(|s| s.parse().ok())
     }
     pub fn download_link(&self) -> Option<String> {
-        self.0[9].and_then(|url| urlencoding::decode(&url).ok().map(|url| url.into_owned()))
+        self.0[9].as_deref().and_then(|url| urlencoding::decode(url).ok().map(std::borrow::Cow::into_owned))
     }
 }
 
 impl OuterLevel {
-    pub fn load_all() -> Vec<OuterLevel> {
+    pub fn load_all() -> Vec<Self> {
         let plist = get_local_level_plist();
-        let levels: Vec<OuterLevel> = plist
+        let levels: Vec<Self> = plist
             .as_dictionary()
             .and_then(|dict| dict.get("LLM_01"))
             .unwrap()
@@ -125,7 +124,7 @@ impl OuterLevel {
                     builder.with_name(title.as_string().unwrap().into());
                 }
                 if let Some(rev) = props.get("k46") {
-                    builder.with_revision(rev.as_signed_integer().unwrap().into());
+                    builder.with_revision(rev.as_signed_integer().unwrap());
                 }
                 builder.build_outer_level().unwrap()
             })
@@ -134,30 +133,28 @@ impl OuterLevel {
     }
 
     pub fn display_name(&self) -> LayoutJob {
-        match self.revision {
-            Some(rev) => {
-                let mut job = LayoutJob::default();
-                job.append(&format!("{} ", self.name), 0f32, TextFormat::default());
-                job.append(
-                    &format!("(rev {})", rev),
-                    0f32,
-                    TextFormat {
-                        italics: true,
-                        ..Default::default()
-                    },
-                );
-                job
-            }
-            None => {
-                let mut job = LayoutJob::default();
-                job.append(&self.name, 0f32, TextFormat::default());
-                job
-            }
+        if let Some(rev) = self.revision {
+            let mut job = LayoutJob::default();
+            job.append(&format!("{} ", self.name), 0f32, TextFormat::default());
+            job.append(
+                &format!("(rev {rev})"),
+                0f32,
+                TextFormat {
+                    italics: true,
+                    ..Default::default()
+                },
+            );
+            job
+        }
+        else {
+            let mut job = LayoutJob::default();
+            job.append(&self.name, 0f32, TextFormat::default());
+            job
         }
     }
 }
 
-pub fn gd_path() -> PathBuf {
+pub fn save_path() -> PathBuf {
     let mut path_buf = home::home_dir().unwrap();
     #[cfg(unix)]
     path_buf.extend(
@@ -183,20 +180,11 @@ pub fn gd_path() -> PathBuf {
     path_buf
 }
 
+#[derive(Default)]
 struct LevelBuilder {
     name: Option<String>,
     song: Option<Song>,
     revision: Option<i64>,
-}
-
-impl Default for LevelBuilder {
-    fn default() -> Self {
-        Self {
-            name: None,
-            song: None,
-            revision: None,
-        }
-    }
 }
 
 impl LevelBuilder {
@@ -245,7 +233,7 @@ impl LevelBuilder {
 fn get_local_level_plist() -> Value {
     let raw_save_data = {
         let mut save_file =
-            File::open(gd_path().join("CCLocalLevels.dat")).expect("No save file found!");
+            File::open(save_path().join("CCLocalLevels.dat")).expect("No save file found!");
         let mut sd = Vec::new();
         save_file.read_to_end(&mut sd).unwrap();
         sd
@@ -258,7 +246,7 @@ fn get_local_level_plist() -> Value {
     let data_post_b64 = URL_SAFE.decode(data_post_xor).unwrap();
     let mut decoder = GzDecoder::<&[u8]>::new(data_post_b64.as_ref());
     let mut plist = String::new();
-    if let Err(_) = decoder.read_to_string(&mut plist) {
+    if decoder.read_to_string(&mut plist).is_err() {
         println!("Warning: Game save likely corrupted (gzip decode failed)");
     }
     Value::from_reader(Cursor::new(plist)).unwrap()

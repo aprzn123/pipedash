@@ -72,14 +72,14 @@ impl BeatRate {
 
 /// Changes: when the time signature changes, the bar immediately resets
 impl StaticTimeSignature {
-    pub fn new(numerator: u32, denominator: u32) -> Self {
+    pub const fn new(numerator: u32, denominator: u32) -> Self {
         Self {
             numerator,
             denominator,
         }
     }
 
-    fn beats_per_bar(&self) -> BeatPosition {
+    fn beats_per_bar(self) -> BeatPosition {
         (self.numerator as f32).into()
     }
 }
@@ -113,7 +113,7 @@ impl TimeSignature {
                         .1
                 }
             }
-            none => self.initial,
+            None => self.initial,
         }
     }
 
