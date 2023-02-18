@@ -5,12 +5,12 @@ mod music;
 
 use eframe;
 use eframe::egui;
+use reqwest::blocking as req;
 use std::boxed::Box;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::Write;
 use thiserror::Error;
-use reqwest::blocking as req;
 
 struct PipeDash {
     msg_queue: VecDeque<Message>,
@@ -109,33 +109,37 @@ impl From<Color> for eframe::epaint::Color32 {
 
 impl Song {
     pub fn try_new(gd_song: gd::Song) -> Result<Self, SongError> {
-        match &gd_song {
-            gd::Song::Newgrounds { id } => {
-                let song_response = gd_song.get_response();
-                let song_path = gd::gd_path().join(format!("{}.mp3", id));
-                File::open(&song_path)
-                    .or_else(|_| song_response
-                         .clone()
-                        .map_err(|e| e.into())
-                        .and_then(|response: gd::SongResponse| -> Result<File, SongError> {
-                            let song_blob = response.download_link()
+        if let gd::Song::Newgrounds { id } = &gd_song {
+            let song_response = gd_song.get_response();
+            let song_path = gd::gd_path().join(format!("{}.mp3", id));
+            File::open(&song_path)
+                .or_else(|_| {
+                    song_response.clone().map_err(|e| e.into()).and_then(
+                        |response: gd::SongResponse| -> Result<File, SongError> {
+                            let song_blob = response
+                                .download_link()
                                 .ok_or(SongError::MissingLink)
                                 .and_then(|link| Ok(req::get(link)?.bytes()?))?;
                             let mut file = File::open(&song_path)?;
                             file.write(&song_blob);
                             Ok(file)
-                        })
+                        },
                     )
-                    .and_then(|file| {
-                        let name = song_response
-                            .ok()
-                            .and_then(|response| response.name())
-                            .unwrap_or("".into());
-                        let decoder = rodio::Decoder::new_mp3(file)?;
-                        Ok(Song {name, id: *id, decoder})
+                })
+                .and_then(|file| {
+                    let name = song_response
+                        .ok()
+                        .and_then(|response| response.name())
+                        .unwrap_or("".into());
+                    let decoder = rodio::Decoder::new_mp3(file)?;
+                    Ok(Song {
+                        name,
+                        id: *id,
+                        decoder,
                     })
-            }
-            _ => Err(SongError::NotNewgrounds),
+                })
+        } else {
+            Err(SongError::NotNewgrounds)
         }
     }
 }

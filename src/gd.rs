@@ -46,7 +46,9 @@ pub enum SongRequestError {
 }
 
 impl From<reqwest::Error> for SongRequestError {
-    fn from(_: reqwest::Error) -> Self {Self::ConnectionFailure}
+    fn from(_: reqwest::Error) -> Self {
+        Self::ConnectionFailure
+    }
 }
 
 impl Song {
