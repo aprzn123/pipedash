@@ -1,5 +1,6 @@
 #![feature(iter_array_chunks)]
-//#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+#![allow(dead_code)]
 
 mod gd;
 mod music;
@@ -11,13 +12,17 @@ use std::collections::VecDeque;
 use std::fs::File;
 use std::io::Write;
 use thiserror::Error;
+use std::error::Error;
+use std::mem;
 
 struct PipeDash {
     msg_queue: VecDeque<Message>,
     selected_level: Option<usize>,
     level_list: Vec<gd::OuterLevel>,
     loaded_song: Option<Song>,
+    loaded_level_checksum: Option<(gd::OuterLevel, md5::Digest)>,
     editor: Editor,
+    error: Option<Box<dyn Error>>
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -30,6 +35,8 @@ enum Color {
 #[derive(Debug)]
 enum Message {
     LevelSelected(usize),
+    CloseError,
+    LoadLevel,
 }
 
 struct Editor {
@@ -252,6 +259,8 @@ impl PipeDash {
             msg_queue: VecDeque::new(),
             level_list: gd::OuterLevel::load_all(),
             loaded_song: None,
+            loaded_level_checksum: None,
+            error: None,
             editor: Editor {
                 state: EditorState {
                     scroll_pos: 0f32,
@@ -274,7 +283,9 @@ impl PipeDash {
             .default_width(100f32)
             .show(ctx, |ui| {
                 ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
-                    ui.button("Load Level");
+                    if ui.add_enabled(self.selected_level.is_some(), egui::Button::new("Load Level")).clicked() {
+                        self.msg_queue.push_back(Message::LoadLevel);
+                    }
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                             for (idx, level) in self.level_list.iter().enumerate() {
@@ -324,14 +335,27 @@ impl PipeDash {
         });
     }
 
+    fn handle_message(&mut self, message: Message) {
+        match message {
+            Message::LevelSelected(idx) => self.selected_level = Some(idx),
+            Message::CloseError => self.error = None,
+            Message::LoadLevel => {
+                // Load song & GdlData
+                let level = self.selected_level
+                    .and_then(|idx| self.level_list.get(idx))
+                    .unwrap()  // will not panic. selected_level range is same as level_list...
+                    .clone();  // ...length - 1; message will not be sent if selected_level is none
+
+                todo!();
+            },
+        }
+
+    }
+
     fn handle_messages(&mut self) {
-        for message in self.msg_queue.drain(..) {
+        for message in mem::take(&mut self.msg_queue) {
             println!("{message:?}");
-            match message {
-                Message::LevelSelected(idx) => {
-                    self.selected_level = Some(idx);
-                }
-            }
+            self.handle_message(message);
         }
     }
 }
@@ -340,8 +364,17 @@ impl eframe::App for PipeDash {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         ctx.set_pixels_per_point(2f32);
 
-        self.side_panel(ctx, frame);
-        self.center_panel(ctx, frame);
+        if let Some(boxed_err) = &self.error {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.label(boxed_err.to_string());
+                if ui.button("Close").clicked() {
+                    self.msg_queue.push_back(Message::CloseError);
+                }
+            });
+        } else {
+            self.side_panel(ctx, frame);
+            self.center_panel(ctx, frame);
+        }
 
         self.handle_messages();
     }

@@ -29,25 +29,27 @@ struct Level {
     song: Song,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OuterLevel {
     name: String,          // k2
     revision: Option<i64>, // k46
 }
 
-#[derive(Debug, Error, Clone)]
+pub struct InnerLevel(String);
+
+#[derive(Debug, Error)]
 pub enum SongRequestError {
     #[error("Request failed")]
-    ConnectionFailure,
+    ConnectionFailure(#[from] reqwest::Error),
     #[error("Index is not an int?????")]
     ParseFailure(#[from] ParseIntError),
     #[error("Not a Newgrounds song")]
     NotNewgrounds,
 }
 
-impl From<reqwest::Error> for SongRequestError {
-    fn from(_: reqwest::Error) -> Self {
-        Self::ConnectionFailure
+impl InnerLevel {
+    pub fn try_from_encoded_ils(ils: &str) -> Option<Self> {
+        todo!()
     }
 }
 
@@ -108,8 +110,7 @@ impl SongResponse {
 
 impl OuterLevel {
     pub fn load_all() -> Vec<Self> {
-        let plist = get_local_level_plist();
-        let levels: Vec<Self> = plist
+        get_local_level_plist()
             .as_dictionary()
             .and_then(|dict| dict.get("LLM_01"))
             .unwrap()
@@ -128,8 +129,31 @@ impl OuterLevel {
                 }
                 builder.build_outer_level().unwrap()
             })
-            .collect();
-        levels
+            .collect()
+    }
+
+    pub fn load_inner(&self) -> InnerLevel {
+        get_local_level_plist()
+            .as_dictionary()
+            .and_then(|dict| dict.get("LLM_01"))
+            .unwrap()
+            .as_dictionary()
+            .unwrap()
+            .iter()
+            .find(|(key, val)| key.as_str() != "_isArr" && {
+                let props = val.as_dictionary().unwrap();
+                props.get("k2").unwrap().as_string().unwrap() == self.name
+                    && props.get("k46").and_then(|rev| rev.as_signed_integer()) == self.revision
+            })
+            .unwrap()
+            .1
+            .as_dictionary()
+            .unwrap()
+            .get("k4")
+            .unwrap()
+            .as_string()
+            .and_then(|str| InnerLevel::try_from_encoded_ils(str))
+            .unwrap()
     }
 
     pub fn display_name(&self) -> LayoutJob {
