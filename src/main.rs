@@ -115,8 +115,8 @@ impl From<Color> for eframe::epaint::Color32 {
 }
 
 impl Song {
-    pub fn try_new(gd_song: gd::Song) -> Result<Self, SongError> {
-        if let gd::Song::Newgrounds { id } = gd_song {
+    pub fn try_new(gd_song: &gd::Song) -> Result<Self, SongError> {
+        if let &gd::Song::Newgrounds { id } = gd_song {
             let song_response = gd_song.get_response();
             let song_path = gd::save_path().join(format!("{id}.mp3"));
 
