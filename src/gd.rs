@@ -49,6 +49,14 @@ pub enum SongRequestError {
 
 impl InnerLevel {
     pub fn try_from_encoded_ils(ils: &str) -> Option<Self> {
+        let b64 = URL_SAFE.decode(ils).ok()?;
+        let mut decoder = GzDecoder::<&[u8]>::new(b64.as_ref());
+        let mut ils = String::new();
+        decoder.read_to_string(&mut ils).ok()?;
+        Self::try_from_ils(&ils)
+    }
+
+    pub fn try_from_ils(ils: &str) -> Option<Self> {
         todo!()
     }
 }
