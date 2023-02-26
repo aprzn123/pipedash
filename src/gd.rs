@@ -1,19 +1,17 @@
+use crate::music::Lines;
 use base64::engine::{general_purpose::URL_SAFE, Engine};
+use chrono::Duration;
 use eframe::egui::TextFormat;
 use eframe::epaint::text::LayoutJob;
 use flate2::read::GzDecoder;
 use gd_plist::Value;
+use itertools::Itertools;
 use reqwest::blocking as req;
 use std::fs::File;
 use std::io::{Cursor, Read};
 use std::num::ParseIntError;
 use std::path::PathBuf;
 use thiserror::Error;
-
-struct User {
-    name: String,
-    id: Option<u64>,
-}
 
 pub enum Song {
     Official { id: i32 /*k8*/ },
@@ -35,7 +33,15 @@ pub struct OuterLevel {
     revision: Option<i64>, // k46
 }
 
+#[derive(Debug)]
 pub struct InnerLevel(String);
+
+#[derive(Debug, Default)]
+pub struct RawLinesTriplet {
+    orange: Lines<Duration>, // 0.8
+    yellow: Lines<Duration>, // 0.9
+    green: Lines<Duration>,  // 1.0
+}
 
 #[derive(Debug, Error)]
 pub enum SongRequestError {
@@ -48,16 +54,50 @@ pub enum SongRequestError {
 }
 
 impl InnerLevel {
-    pub fn try_from_encoded_ils(ils: &str) -> Option<Self> {
-        let b64 = URL_SAFE.decode(ils).ok()?;
+    pub fn try_from_encoded_ils(encoded_ils: &str) -> Option<Self> {
+        let b64 = URL_SAFE.decode(encoded_ils).ok()?;
         let mut decoder = GzDecoder::<&[u8]>::new(b64.as_ref());
         let mut ils = String::new();
         decoder.read_to_string(&mut ils).ok()?;
-        Some(Self(ils.into()))
+        Some(Self(ils))
     }
 
-    pub fn hash(self) -> md5::Digest {
-        md5::compute(self.0)
+    pub fn get_property<'a>(&'a self, key: &str) -> Option<&'a str> {
+        self.0
+            .split(';')
+            .next()?
+            .split(',')
+            .tuples()
+            .find(|(k, _)| k == &key)
+            .map(|(_, v)| v)
+    }
+
+    pub fn get_lines(&self) -> RawLinesTriplet {
+        let mut lines = RawLinesTriplet::default();
+        self.0
+            .split('~')
+            .tuples()
+            .for_each(|(timestamp, color_code)| {
+                let Ok(code_num) = color_code.parse::<f64>().map(|x| (10f64 * x).round() as i32) else {
+                    log::info!("{} could not be parsed", color_code);
+                    return;
+                };
+                let Ok(duration) = timestamp.parse::<f64>().map(|t| Duration::nanoseconds((t * 1_000_000_000f64) as i64)) else {
+                    log::info!("{} could not be parsed", timestamp);
+                    return;
+                };
+                match code_num {
+                    8 => {lines.orange.insert(duration);},
+                    9 => {lines.yellow.insert(duration);},
+                    10 => {lines.green.insert(duration);},
+                    _ => {log::info!("{} at timestamp {} was invalid", code_num, timestamp)}
+                };
+            });
+        lines
+    }
+
+    pub fn hash(&self) -> md5::Digest {
+        md5::compute(self.0.clone())
     }
 }
 
@@ -112,7 +152,11 @@ impl SongResponse {
         self.0[8].as_deref().and_then(|s| s.parse().ok())
     }
     pub fn download_link(&self) -> Option<String> {
-        self.0[9].as_deref().and_then(|url| urlencoding::decode(url).ok().map(std::borrow::Cow::into_owned))
+        self.0[9].as_deref().and_then(|url| {
+            urlencoding::decode(url)
+                .ok()
+                .map(std::borrow::Cow::into_owned)
+        })
     }
 }
 
@@ -148,10 +192,12 @@ impl OuterLevel {
             .as_dictionary()
             .unwrap()
             .iter()
-            .find(|(key, val)| key.as_str() != "_isArr" && {
-                let props = val.as_dictionary().unwrap();
-                props.get("k2").unwrap().as_string().unwrap() == self.name
-                    && props.get("k46").and_then(|rev| rev.as_signed_integer()) == self.revision
+            .find(|(key, val)| {
+                key.as_str() != "_isArr" && {
+                    let props = val.as_dictionary().unwrap();
+                    props.get("k2").unwrap().as_string().unwrap() == self.name
+                        && props.get("k46").and_then(|rev| rev.as_signed_integer()) == self.revision
+                }
             })
             .unwrap()
             .1
@@ -177,8 +223,7 @@ impl OuterLevel {
                 },
             );
             job
-        }
-        else {
+        } else {
             let mut job = LayoutJob::default();
             job.append(&self.name, 0f32, TextFormat::default());
             job
@@ -279,7 +324,7 @@ fn get_local_level_plist() -> Value {
     let mut decoder = GzDecoder::<&[u8]>::new(data_post_b64.as_ref());
     let mut plist = String::new();
     if decoder.read_to_string(&mut plist).is_err() {
-        println!("Warning: Game save likely corrupted (gzip decode failed)");
+        log::warn!("Game save likely corrupted (gzip decode failed)");
     }
     Value::from_reader(Cursor::new(plist)).unwrap()
 }

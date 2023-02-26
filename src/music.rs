@@ -25,9 +25,12 @@ pub struct StaticTimeSignature {
     denominator: u32,
 }
 
-#[derive(Default)]
-pub struct Lines {
-    positions: BTreeSet<BeatPosition>,
+#[derive(Debug)]
+pub struct Lines<T = BeatPosition>
+where
+    T: Ord,
+{
+    positions: BTreeSet<T>,
 }
 
 impl StaticBeatRate {
@@ -133,21 +136,39 @@ impl TimeSignature {
     }
 }
 
-impl Lines {
+impl<T> Default for Lines<T>
+where
+    T: Ord,
+{
+    fn default() -> Self {
+        Self {
+            positions: BTreeSet::new(),
+        }
+    }
+}
+
+impl<T> Lines<T>
+where
+    T: Ord,
+{
     pub fn new() -> Self {
-        Self::default()
+        Default::default()
     }
 
-    pub fn insert(&mut self, pos: BeatPosition) -> bool {
+    pub fn insert(&mut self, pos: T) -> bool {
         self.positions.insert(pos)
     }
 
-    pub fn remove(&mut self, pos: BeatPosition) -> bool {
+    pub fn remove(&mut self, pos: T) -> bool {
         self.positions.remove(&pos)
     }
 
-    pub fn get_positions(&mut self) -> &BTreeSet<BeatPosition> {
+    pub fn get_positions(&self) -> &BTreeSet<T> {
         &self.positions
+    }
+
+    pub fn empty(&self) -> bool {
+        self.positions.is_empty()
     }
 }
 

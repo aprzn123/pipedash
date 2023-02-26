@@ -15,11 +15,9 @@ use std::io::Write;
 use std::mem;
 use thiserror::Error;
 
-fn project_dirs() -> directories::ProjectDirs {
-    directories::ProjectDirs::from("xyz", "interestingzinc", "pipedash").expect("Home dir missing?")
-}
 
 struct PipeDash {
+    project_dirs: directories::ProjectDirs,
     msg_queue: VecDeque<Message>,
     selected_level: Option<usize>,
     level_list: Vec<gd::OuterLevel>,
@@ -363,7 +361,7 @@ impl PipeDash {
 
     fn handle_messages(&mut self) {
         for message in mem::take(&mut self.msg_queue) {
-            log::info!("{message:?}");
+            println!("{message:?}");
             self.handle_message(message);
         }
     }
@@ -390,13 +388,6 @@ impl eframe::App for PipeDash {
 }
 
 fn main() {
-    simplelog::WriteLogger::init(
-        simplelog::LevelFilter::Info,
-        simplelog::Config::default(),
-        File::create(project_dirs().data_local_dir().join("run.log"))
-            .expect("file creation failed?"),
-    )
-    .map_err(|e| println!("Logging uninitialized"));
     let app: PipeDash;
     let opts = eframe::NativeOptions::default();
     eframe::run_native("PipeDash", opts, Box::new(|cc| Box::new(PipeDash::new(cc))));
