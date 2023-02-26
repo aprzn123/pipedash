@@ -53,11 +53,11 @@ impl InnerLevel {
         let mut decoder = GzDecoder::<&[u8]>::new(b64.as_ref());
         let mut ils = String::new();
         decoder.read_to_string(&mut ils).ok()?;
-        Self::try_from_ils(&ils)
+        Some(Self(ils.into()))
     }
 
-    pub fn try_from_ils(ils: &str) -> Option<Self> {
-        todo!()
+    pub fn hash(self) -> md5::Digest {
+        md5::compute(self.0)
     }
 }
 
