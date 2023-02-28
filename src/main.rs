@@ -1,5 +1,5 @@
 #![feature(iter_array_chunks)]
-#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+//#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
 #![allow(dead_code)]
 
 mod gd;
@@ -22,11 +22,11 @@ fn project_dirs() -> directories::ProjectDirs {
 struct PipeDash {
     msg_queue: VecDeque<Message>,
     selected_level: Option<usize>,
-    level_list: Vec<gd::OuterLevel>,
+    level_list: Vec<gd::Level>,
+    loaded_level_checksum: Option<(gd::Level, md5::Digest)>,
     loaded_song: Option<Song>,
-    loaded_level_checksum: Option<(gd::OuterLevel, md5::Digest)>,
     editor: Editor,
-    error: Option<Box<dyn Error>>,
+    errors: VecDeque<Box<dyn Error>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -43,9 +43,20 @@ enum Message {
     LoadLevel,
 }
 
+enum EditorMode {
+    NoSong,
+    RhythmWizard {editor: WizardEditor, song: Song},
+    Full {editor: Editor, song: Song}
+}
+
 struct Editor {
     state: EditorState,
     data: GdlData,
+}
+
+struct WizardEditor {
+    state: EditorState,
+    data: WizardData,
 }
 
 struct EditorState {
@@ -62,9 +73,17 @@ struct GdlData {
     time_signatures: music::TimeSignature,
 }
 
+struct WizardData {
+    green_lines: music::Lines<chrono::Duration>,
+    orange_lines: music::Lines<chrono::Duration>,
+    yellow_lines: music::Lines<chrono::Duration>,
+    beat_rate: Option<music::BeatRate>,
+    time_signatures: Option<music::TimeSignature>,
+}
+
 struct Song {
     name: String,
-    id: i32,
+    id: i64,
     decoder: rodio::Decoder<File>,
 }
 
@@ -260,10 +279,10 @@ impl PipeDash {
         Self {
             selected_level: None,
             msg_queue: VecDeque::new(),
-            level_list: gd::OuterLevel::load_all(),
+            level_list: gd::Level::load_all(),
             loaded_song: None,
             loaded_level_checksum: None,
-            error: None,
+            errors: VecDeque::new(),
             editor: Editor {
                 state: EditorState {
                     scroll_pos: 0f32,
@@ -347,15 +366,34 @@ impl PipeDash {
     fn handle_message(&mut self, message: Message) {
         match message {
             Message::LevelSelected(idx) => self.selected_level = Some(idx),
-            Message::CloseError => self.error = None,
+            Message::CloseError => { self.errors.pop_front(); },
             Message::LoadLevel => {
-                // Load song & GdlData
+                // Load song, GdlData, checksum; if there are no lines go straight into editor, otherwise
+                // do some sort of rhythm wizard thing
+                // [X] Load song
+                // [ ] Load GdlData
+                // [X] Load checksum
+                // [ ] Handle rhythm wizard
                 let level = self
                     .selected_level
                     .and_then(|idx| self.level_list.get(idx))
                     .unwrap() // will not panic. selected_level range is same as level_list...
                     .clone(); // ...length - 1; message will not be sent if selected_level is none
 
+                match Song::try_new(&level.song()) {
+                    Ok(song) => {
+                        self.loaded_song = Some(song);
+                    },
+                    Err(e) => {
+                        self.errors.push_front(Box::new(e)); 
+                        return;
+                    },
+                }
+
+                let inner_level = level.load_inner();
+                let lines = inner_level.get_lines();
+
+                self.loaded_level_checksum = Some((level, inner_level.hash()));
                 todo!();
             }
         }
@@ -373,7 +411,7 @@ impl eframe::App for PipeDash {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         ctx.set_pixels_per_point(2f32);
 
-        if let Some(boxed_err) = &self.error {
+        if let Some(boxed_err) = &self.errors.front() {
             egui::CentralPanel::default().show(ctx, |ui| {
                 ui.label(boxed_err.to_string());
                 if ui.button("Close").clicked() {

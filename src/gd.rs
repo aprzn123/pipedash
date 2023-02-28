@@ -13,24 +13,21 @@ use std::num::ParseIntError;
 use std::path::PathBuf;
 use thiserror::Error;
 
+#[derive(Clone, Copy, Debug)]
 pub enum Song {
-    Official { id: i32 /*k8*/ },
-    Newgrounds { id: i32 /*k45*/ },
+    Official { id: i64 /*k8*/ },
+    Newgrounds { id: i64 /*k45*/ },
     Unknown,
 }
 
 #[derive(Clone)]
 pub struct SongResponse([Option<String>; 9]);
 
-struct Level {
-    outer: OuterLevel,
-    song: Song,
-}
-
 #[derive(Debug, Clone)]
-pub struct OuterLevel {
+pub struct Level {
     name: String,          // k2
     revision: Option<i64>, // k46
+    song: Song,            // k8 or k45
 }
 
 #[derive(Debug)]
@@ -160,7 +157,7 @@ impl SongResponse {
     }
 }
 
-impl OuterLevel {
+impl Level {
     pub fn load_all() -> Vec<Self> {
         get_local_level_plist()
             .as_dictionary()
@@ -179,7 +176,13 @@ impl OuterLevel {
                 if let Some(rev) = props.get("k46") {
                     builder.with_revision(rev.as_signed_integer().unwrap());
                 }
-                builder.build_outer_level().unwrap()
+                if let Some(official_song) = props.get("k8") {
+                    builder.with_song(Song::Official { id: official_song.as_signed_integer().unwrap() });
+                }
+                if let Some(ng_song) = props.get("k45") {
+                    builder.with_song(Song::Newgrounds { id: ng_song.as_signed_integer().unwrap() });
+                }
+                builder.build_level().unwrap()
             })
             .collect()
     }
@@ -206,7 +209,7 @@ impl OuterLevel {
             .get("k4")
             .unwrap()
             .as_string()
-            .and_then(|str| InnerLevel::try_from_encoded_ils(str))
+            .and_then(InnerLevel::try_from_encoded_ils)
             .unwrap()
     }
 
@@ -228,6 +231,10 @@ impl OuterLevel {
             job.append(&self.name, 0f32, TextFormat::default());
             job
         }
+    }
+
+    pub fn song(&self) -> Song {
+        self.song
     }
 }
 
@@ -285,23 +292,9 @@ impl LevelBuilder {
         match self {
             Self {
                 name: Some(name),
-                song: Some(song),
                 revision,
-            } => Some(Level {
                 song,
-                outer: OuterLevel { name, revision },
-            }),
-            _ => None,
-        }
-    }
-
-    fn build_outer_level(self) -> Option<OuterLevel> {
-        match self {
-            Self {
-                name: Some(name),
-                revision,
-                ..
-            } => Some(OuterLevel { name, revision }),
+            } => Some(Level { name, revision, song: song.unwrap_or(Song::Unknown)}),
             _ => None,
         }
     }
