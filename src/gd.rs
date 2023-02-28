@@ -20,8 +20,8 @@ pub enum Song {
     Unknown,
 }
 
-#[derive(Clone)]
-pub struct SongResponse([Option<String>; 9]);
+#[derive(Clone, Debug)]
+pub struct SongResponse([Option<String>; 10]);
 
 #[derive(Debug, Clone)]
 pub struct Level {
@@ -35,9 +35,9 @@ pub struct InnerLevel(String);
 
 #[derive(Debug, Default)]
 pub struct RawLinesTriplet {
-    orange: Lines<Duration>, // 0.8
-    yellow: Lines<Duration>, // 0.9
-    green: Lines<Duration>,  // 1.0
+    pub orange: Lines<Duration>, // 0.8
+    pub yellow: Lines<Duration>, // 0.9
+    pub green: Lines<Duration>,  // 1.0
 }
 
 #[derive(Debug, Error)]
@@ -103,13 +103,16 @@ impl Song {
         match self {
             Self::Newgrounds { id } => {
                 let mut out = SongResponse(Default::default());
-                req::Client::new()
-                    .post("http://boomlings.com/database/getGJSongInfo.php")
-                    .body(format!(
-                        r#" {{ "secret": "Wmfd2893gb7", "songID": {id} }} "#,
-                    ))
+                dbg!(req::ClientBuilder::new()
+                    .user_agent("")
+                    .build()?
+                    .post("http://www.boomlings.com/database/getGJSongInfo.php")
+                    // .body(dbg!(format!(
+                    //     r#" {{ "secret": "Wmfd2893gb7", "songID": {} }} "#, id
+                    // )))
+                    .form(&[("songID", id.to_string().as_ref()), ("secret", "Wmfd2893gb7")])
                     .send()?
-                    .text()?
+                    .text()?)
                     .split("~|~")
                     .array_chunks()
                     .try_for_each(|[id, value]| -> Result<(), SongRequestError> {

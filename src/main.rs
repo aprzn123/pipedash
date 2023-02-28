@@ -24,8 +24,7 @@ struct PipeDash {
     selected_level: Option<usize>,
     level_list: Vec<gd::Level>,
     loaded_level_checksum: Option<(gd::Level, md5::Digest)>,
-    loaded_song: Option<Song>,
-    editor: Editor,
+    editor_mode: EditorMode,
     errors: VecDeque<Box<dyn Error>>,
 }
 
@@ -49,6 +48,7 @@ enum EditorMode {
     Full {editor: Editor, song: Song}
 }
 
+#[derive(Default)]
 struct Editor {
     state: EditorState,
     data: GdlData,
@@ -105,15 +105,17 @@ enum SongError {
 
 struct BeatRateWidget<'a> {
     state: &'a mut EditorState,
-    beat_rate: &'a mut music::BeatRate,
+    beat_rate: Option<&'a mut music::BeatRate>,
 }
 struct TimeSignatureWidget<'a> {
     state: &'a mut EditorState,
-    time_signatures: &'a mut music::TimeSignature,
+    time_signatures: Option<&'a mut music::TimeSignature>,
 }
-struct LinesWidget<'a> {
+struct LinesWidget<'a, T = music::BeatPosition> 
+where T: Ord
+{
     state: &'a mut EditorState,
-    lines: &'a mut music::Lines,
+    lines: &'a mut music::Lines<T>,
     color: Color,
 }
 struct WaveformWidget<'a> {
@@ -137,18 +139,54 @@ impl From<Color> for eframe::epaint::Color32 {
     }
 }
 
+impl EditorMode {
+    pub fn display(&mut self, ui: &mut egui::Ui) {
+        match self {
+            EditorMode::RhythmWizard { editor, song } => {
+            },
+            EditorMode::Full { editor, song } => {
+                ui.add(editor.time_signature_widget());
+                ui.add(editor.beat_rate_widget());
+                ui.add(editor.lines_widget(Color::Green));
+                ui.add(editor.lines_widget(Color::Orange));
+                ui.add(editor.lines_widget(Color::Yellow));
+                ui.add(editor.waveform_widget(song));
+            },
+            EditorMode::NoSong => {},
+        }
+    }
+}
+
+impl Default for EditorState {
+    fn default() -> Self {
+        EditorState { scroll_pos: 0f32, pts_per_second: 10f32, subdivisions: 4f32 }
+    }
+}
+
+impl Default for GdlData {
+    fn default() -> Self {
+        GdlData {
+            green_lines: Default::default(),
+            orange_lines: Default::default(),
+            yellow_lines: Default::default(),
+            beat_rate: music::StaticBeatRate::from_bpm(120f32).into(),
+            time_signatures: music::StaticTimeSignature::new(4, 4).into(),
+        }
+    }
+}
+
 impl Song {
     pub fn try_new(gd_song: &gd::Song) -> Result<Self, SongError> {
         if let &gd::Song::Newgrounds { id } = gd_song {
-            let song_response = gd_song.get_response();
+            let song_result = gd_song.get_response();
             let song_path = gd::save_path().join(format!("{id}.mp3"));
 
-            let (file, name) = match (File::open(&song_path), song_response) {
+            let (file, name) = match (File::open(&song_path), song_result) {
                 (Ok(file), response) => {
                     let name = response
                         .ok()
                         .and_then(|response| response.name().map(Into::into))
-                        .unwrap_or_default();
+                        .unwrap_or("Missing Name".into());
 
                     (file, name)
                 }
@@ -179,14 +217,14 @@ impl Editor {
     pub fn beat_rate_widget(&mut self) -> BeatRateWidget {
         BeatRateWidget {
             state: &mut self.state,
-            beat_rate: &mut self.data.beat_rate,
+            beat_rate: Some(&mut self.data.beat_rate),
         }
     }
 
     pub fn time_signature_widget(&mut self) -> TimeSignatureWidget {
         TimeSignatureWidget {
             state: &mut self.state,
-            time_signatures: &mut self.data.time_signatures,
+            time_signatures: Some(&mut self.data.time_signatures),
         }
     }
 
@@ -207,6 +245,59 @@ impl Editor {
             state: &mut self.state,
             song,
         }
+    }
+}
+
+impl WizardEditor {
+    pub fn beat_rate_widget(&mut self) -> BeatRateWidget {
+        BeatRateWidget {
+            state: &mut self.state,
+            beat_rate: self.data.beat_rate.as_mut(),
+        }
+    }
+
+    pub fn time_signature_widget(&mut self) -> TimeSignatureWidget {
+        TimeSignatureWidget {
+            state: &mut self.state,
+            time_signatures: self.data.time_signatures.as_mut(),
+        }
+    }
+
+    pub fn lines_widget(&mut self, col: Color) -> LinesWidget<chrono::Duration> {
+        LinesWidget {
+            state: &mut self.state,
+            lines: match col {
+                Color::Green => &mut self.data.green_lines,
+                Color::Yellow => &mut self.data.yellow_lines,
+                Color::Orange => &mut self.data.orange_lines,
+            },
+            color: col,
+        }
+    }
+
+    pub fn waveform_widget<'a>(&'a mut self, song: &'a Song) -> WaveformWidget {
+        WaveformWidget {
+            state: &mut self.state,
+            song,
+        }
+    }
+}
+
+impl From<gd::RawLinesTriplet> for WizardData {
+    fn from(lines: gd::RawLinesTriplet) -> Self {
+        Self {
+            green_lines: lines.green,
+            orange_lines: lines.orange,
+            yellow_lines: lines.yellow,
+            beat_rate: None,
+            time_signatures: None,
+        }
+    }
+}
+
+impl From<gd::RawLinesTriplet> for WizardEditor {
+    fn from(lines: gd::RawLinesTriplet) -> Self {
+        Self { state: Default::default(), data: lines.into() }
     }
 }
 
@@ -280,23 +371,9 @@ impl PipeDash {
             selected_level: None,
             msg_queue: VecDeque::new(),
             level_list: gd::Level::load_all(),
-            loaded_song: None,
             loaded_level_checksum: None,
             errors: VecDeque::new(),
-            editor: Editor {
-                state: EditorState {
-                    scroll_pos: 0f32,
-                    pts_per_second: 5f32,
-                    subdivisions: 4.0,
-                },
-                data: GdlData {
-                    beat_rate: music::StaticBeatRate::from_bpm(120f32).into(),
-                    time_signatures: music::StaticTimeSignature::new(4, 4).into(),
-                    green_lines: music::Lines::new(),
-                    orange_lines: music::Lines::new(),
-                    yellow_lines: music::Lines::new(),
-                },
-            },
+            editor_mode: EditorMode::NoSong,
         }
     }
 
@@ -336,29 +413,23 @@ impl PipeDash {
     fn center_panel(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered_justified(|ui| {
+                use EditorMode::*;
                 ui.label(
-                    egui::RichText::new(match &self.loaded_song {
-                        Some(song) => &song.name,
-                        None => "No song loaded...",
+                    egui::RichText::new(match &self.editor_mode {
+                        RhythmWizard { song, .. } | Full { song, .. } => &song.name,
+                        NoSong => "No song loaded...",
                     })
                     .size(32.0),
                 );
                 ui.label(
-                    egui::RichText::new(match &self.loaded_song {
-                        Some(song) => song.id.to_string(),
-                        None => "No song loaded...".into(),
+                    egui::RichText::new(match &self.editor_mode {
+                        RhythmWizard { song, .. } | Full { song, .. } => song.id.to_string(),
+                        NoSong => "No song loaded...".into(),
                     })
                     .size(20.0),
                 );
 
-                if let Some(song) = &self.loaded_song {
-                    ui.add(self.editor.time_signature_widget());
-                    ui.add(self.editor.beat_rate_widget());
-                    ui.add(self.editor.lines_widget(Color::Green));
-                    ui.add(self.editor.lines_widget(Color::Orange));
-                    ui.add(self.editor.lines_widget(Color::Yellow));
-                    ui.add(self.editor.waveform_widget(song));
-                }
+                self.editor_mode.display(ui);
             });
         });
     }
@@ -369,32 +440,36 @@ impl PipeDash {
             Message::CloseError => { self.errors.pop_front(); },
             Message::LoadLevel => {
                 // Load song, GdlData, checksum; if there are no lines go straight into editor, otherwise
-                // do some sort of rhythm wizard thing
-                // [X] Load song
-                // [ ] Load GdlData
-                // [X] Load checksum
-                // [ ] Handle rhythm wizard
+                // start the rhythm wizard
                 let level = self
                     .selected_level
                     .and_then(|idx| self.level_list.get(idx))
                     .unwrap() // will not panic. selected_level range is same as level_list...
                     .clone(); // ...length - 1; message will not be sent if selected_level is none
 
-                match Song::try_new(&level.song()) {
-                    Ok(song) => {
-                        self.loaded_song = Some(song);
-                    },
+                let song = match Song::try_new(&level.song()) {
+                    Ok(song) => song,
                     Err(e) => {
                         self.errors.push_front(Box::new(e)); 
                         return;
                     },
-                }
+                };
 
                 let inner_level = level.load_inner();
                 let lines = inner_level.get_lines();
+                if lines.orange.empty() && lines.green.empty() && lines.yellow.empty() {
+                    self.editor_mode = EditorMode::Full {
+                        editor: Default::default(),
+                        song,
+                    }
+                } else {
+                    self.editor_mode = EditorMode::RhythmWizard {
+                        editor: lines.into(),
+                        song,
+                    }
+                }
 
                 self.loaded_level_checksum = Some((level, inner_level.hash()));
-                todo!();
             }
         }
     }
@@ -428,6 +503,7 @@ impl eframe::App for PipeDash {
 }
 
 fn main() {
+    std::fs::create_dir_all(project_dirs().data_local_dir());
     simplelog::WriteLogger::init(
         simplelog::LevelFilter::Info,
         simplelog::Config::default(),
