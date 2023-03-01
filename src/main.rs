@@ -214,15 +214,19 @@ impl Song {
                     let mut file = File::open(&song_path)?;
                     file.write_all(&song_blob)?;
 
-                    (file, response.name().unwrap_or("").into())
+                    (file, response.name().unwrap_or_default().into())
                 }
                 (Err(err), Err(_)) => return Err(err.into()),
             };
             
-            let length = mp3_duration::from_file(&file).unwrap();
-
             let decoder = rodio::Decoder::new_mp3(file)?;
-            let buffer = rodio::buffer::SamplesBuffer::new(decoder.channels(), decoder.sample_rate(), decoder.collect::<Vec<i16>>());
+
+            let channels = decoder.channels();
+            let sample_rate = decoder.sample_rate();
+            let samples: Vec<i16> = decoder.collect();
+
+            let length = time::Duration::from_secs(samples.len() as u64 / channels as u64 / sample_rate as u64);
+            let buffer = rodio::buffer::SamplesBuffer::new(channels, sample_rate, samples);
 
             let (stream, stream_handle) = rodio::OutputStream::try_default()?;
             let sink = rodio::Sink::try_new(&stream_handle)?;
@@ -281,7 +285,7 @@ impl Editor {
             .for_each(|ev| match ev {
                 Event::Key { key: Key::ArrowLeft, pressed: true, modifiers } => self.scroll(-5.0, song),
                 Event::Key { key: Key::ArrowRight, pressed: true, modifiers } => self.scroll(5.0, song),
-                Event::Key { key: Key::Space, pressed: true, modifiers } => self.play_pause(song),
+                Event::Key { key: Key::Space, pressed: true, modifiers } if modifiers.is_none() => self.play_pause(song),
                 _ => (),
             });
     }
