@@ -1,6 +1,6 @@
 use crate::music::Lines;
 use base64::engine::{general_purpose::URL_SAFE, Engine};
-use chrono::Duration;
+use std::time::Duration;
 use eframe::egui::TextFormat;
 use eframe::epaint::text::LayoutJob;
 use flate2::read::GzDecoder;
@@ -79,7 +79,7 @@ impl InnerLevel {
                     log::info!("{} could not be parsed", color_code);
                     return;
                 };
-                let Ok(duration) = timestamp.parse::<f64>().map(|t| Duration::nanoseconds((t * 1_000_000_000f64) as i64)) else {
+                let Ok(duration) = timestamp.parse::<f64>().map(|t| Duration::from_secs_f64(t)) else {
                     log::info!("{} could not be parsed", timestamp);
                     return;
                 };
@@ -103,16 +103,13 @@ impl Song {
         match self {
             Self::Newgrounds { id } => {
                 let mut out = SongResponse(Default::default());
-                dbg!(req::ClientBuilder::new()
+                req::ClientBuilder::new()
                     .user_agent("")
                     .build()?
                     .post("http://www.boomlings.com/database/getGJSongInfo.php")
-                    // .body(dbg!(format!(
-                    //     r#" {{ "secret": "Wmfd2893gb7", "songID": {} }} "#, id
-                    // )))
                     .form(&[("songID", id.to_string().as_ref()), ("secret", "Wmfd2893gb7")])
                     .send()?
-                    .text()?)
+                    .text()?
                     .split("~|~")
                     .array_chunks()
                     .try_for_each(|[id, value]| -> Result<(), SongRequestError> {

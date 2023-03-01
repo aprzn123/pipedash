@@ -1,4 +1,4 @@
-use chrono::Duration;
+use std::time::Duration;
 use ordered_float::OrderedFloat as Float;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -35,7 +35,7 @@ where
 
 impl StaticBeatRate {
     pub fn from_bpm(bpm: f32) -> Self {
-        Self(Duration::microseconds(60_000_000 / bpm as i64))
+        Self(Duration::from_secs_f32(60.0 / bpm))
     }
 }
 

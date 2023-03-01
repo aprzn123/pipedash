@@ -14,6 +14,8 @@ use std::fs::File;
 use std::io::Write;
 use std::mem;
 use thiserror::Error;
+use std::time;
+use rodio::source::Source;
 
 fn project_dirs() -> directories::ProjectDirs {
     directories::ProjectDirs::from("xyz", "interestingzinc", "pipedash").expect("Home dir missing?")
@@ -60,9 +62,9 @@ struct WizardEditor {
 }
 
 struct EditorState {
-    scroll_pos: f32,
-    pts_per_second: f32, // zoom level
-    subdivisions: f32,
+    scroll_pos: f64,
+    pts_per_second: f64, // zoom level
+    subdivisions: u32,
 }
 
 struct GdlData {
@@ -74,9 +76,9 @@ struct GdlData {
 }
 
 struct WizardData {
-    green_lines: music::Lines<chrono::Duration>,
-    orange_lines: music::Lines<chrono::Duration>,
-    yellow_lines: music::Lines<chrono::Duration>,
+    green_lines: music::Lines<time::Duration>,
+    orange_lines: music::Lines<time::Duration>,
+    yellow_lines: music::Lines<time::Duration>,
     beat_rate: Option<music::BeatRate>,
     time_signatures: Option<music::TimeSignature>,
 }
@@ -84,7 +86,10 @@ struct WizardData {
 struct Song {
     name: String,
     id: i64,
-    decoder: rodio::Decoder<File>,
+    buffer: rodio::buffer::SamplesBuffer<i16>,
+    length: time::Duration,
+    stream: rodio::OutputStream,
+    sink: rodio::Sink,
 }
 
 #[derive(Error, Debug)]
@@ -101,26 +106,31 @@ enum SongError {
     NgServerError(#[from] reqwest::Error),
     #[error("Missing download link")]
     MissingLink,
+    #[error("Unable to create audio stream")]
+    StreamError(#[from] rodio::StreamError),
+    #[error("Unable to create audio sink")]
+    SinkError(#[from] rodio::PlayError),
 }
 
 struct BeatRateWidget<'a> {
     state: &'a mut EditorState,
     beat_rate: Option<&'a mut music::BeatRate>,
+    song: &'a Song, // for waveform
 }
+
 struct TimeSignatureWidget<'a> {
     state: &'a mut EditorState,
     time_signatures: Option<&'a mut music::TimeSignature>,
+    song: &'a Song, // for waveform
 }
+
 struct LinesWidget<'a, T = music::BeatPosition> 
 where T: Ord
 {
     state: &'a mut EditorState,
     lines: &'a mut music::Lines<T>,
     color: Color,
-}
-struct WaveformWidget<'a> {
-    state: &'a mut EditorState,
-    song: &'a Song,
+    song: &'a Song, // for waveform
 }
 
 fn allocate_editor_space(ui: &mut egui::Ui) -> (egui::Rect, egui::Response) {
@@ -141,25 +151,30 @@ impl From<Color> for eframe::epaint::Color32 {
 
 impl EditorMode {
     pub fn display(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx();
         match self {
             EditorMode::RhythmWizard { editor, song } => {
+                ui.label("Rhythm Wizard");
             },
             EditorMode::Full { editor, song } => {
-                ui.add(editor.time_signature_widget());
-                ui.add(editor.beat_rate_widget());
-                ui.add(editor.lines_widget(Color::Green));
-                ui.add(editor.lines_widget(Color::Orange));
-                ui.add(editor.lines_widget(Color::Yellow));
-                ui.add(editor.waveform_widget(song));
+                editor.handle_keyboard_input(ctx, song);
+                ui.label("Editor");
+                ui.add(editor.time_signature_widget(song));
+                ui.add(editor.beat_rate_widget(song));
+                ui.add(editor.lines_widget(Color::Green, song));
+                ui.add(editor.lines_widget(Color::Orange, song));
+                ui.add(editor.lines_widget(Color::Yellow, song));
             },
-            EditorMode::NoSong => {},
+            EditorMode::NoSong => {
+                ui.label("No song to edit");
+            },
         }
     }
 }
 
 impl Default for EditorState {
     fn default() -> Self {
-        EditorState { scroll_pos: 0f32, pts_per_second: 10f32, subdivisions: 4f32 }
+        EditorState { scroll_pos: 0.0, pts_per_second: 10.0, subdivisions: 4 }
     }
 }
 
@@ -169,7 +184,7 @@ impl Default for GdlData {
             green_lines: Default::default(),
             orange_lines: Default::default(),
             yellow_lines: Default::default(),
-            beat_rate: music::StaticBeatRate::from_bpm(120f32).into(),
+            beat_rate: music::StaticBeatRate::from_bpm(120.0).into(),
             time_signatures: music::StaticTimeSignature::new(4, 4).into(),
         }
     }
@@ -203,10 +218,16 @@ impl Song {
                 }
                 (Err(err), Err(_)) => return Err(err.into()),
             };
+            
+            let length = mp3_duration::from_file(&file).unwrap();
 
             let decoder = rodio::Decoder::new_mp3(file)?;
+            let buffer = rodio::buffer::SamplesBuffer::new(decoder.channels(), decoder.sample_rate(), decoder.collect::<Vec<i16>>());
 
-            Ok(Self { name, id, decoder })
+            let (stream, stream_handle) = rodio::OutputStream::try_default()?;
+            let sink = rodio::Sink::try_new(&stream_handle)?;
+
+            Ok(Self { name, id, buffer, length, stream, sink })
         } else {
             Err(SongError::NotNewgrounds)
         }
@@ -214,56 +235,23 @@ impl Song {
 }
 
 impl Editor {
-    pub fn beat_rate_widget(&mut self) -> BeatRateWidget {
+    pub fn beat_rate_widget<'a>(&'a mut self, song: & 'a mut Song) -> BeatRateWidget {
         BeatRateWidget {
             state: &mut self.state,
             beat_rate: Some(&mut self.data.beat_rate),
-        }
-    }
-
-    pub fn time_signature_widget(&mut self) -> TimeSignatureWidget {
-        TimeSignatureWidget {
-            state: &mut self.state,
-            time_signatures: Some(&mut self.data.time_signatures),
-        }
-    }
-
-    pub fn lines_widget(&mut self, col: Color) -> LinesWidget {
-        LinesWidget {
-            state: &mut self.state,
-            lines: match col {
-                Color::Green => &mut self.data.green_lines,
-                Color::Yellow => &mut self.data.yellow_lines,
-                Color::Orange => &mut self.data.orange_lines,
-            },
-            color: col,
-        }
-    }
-
-    pub fn waveform_widget<'a>(&'a mut self, song: &'a Song) -> WaveformWidget {
-        WaveformWidget {
-            state: &mut self.state,
             song,
         }
     }
-}
 
-impl WizardEditor {
-    pub fn beat_rate_widget(&mut self) -> BeatRateWidget {
-        BeatRateWidget {
-            state: &mut self.state,
-            beat_rate: self.data.beat_rate.as_mut(),
-        }
-    }
-
-    pub fn time_signature_widget(&mut self) -> TimeSignatureWidget {
+    pub fn time_signature_widget<'a>(&'a mut self, song: &'a mut Song) -> TimeSignatureWidget {
         TimeSignatureWidget {
             state: &mut self.state,
-            time_signatures: self.data.time_signatures.as_mut(),
+            time_signatures: Some(&mut self.data.time_signatures),
+            song,
         }
     }
 
-    pub fn lines_widget(&mut self, col: Color) -> LinesWidget<chrono::Duration> {
+    pub fn lines_widget<'a>(&'a mut self, col: Color, song: &'a mut Song) -> LinesWidget {
         LinesWidget {
             state: &mut self.state,
             lines: match col {
@@ -272,12 +260,65 @@ impl WizardEditor {
                 Color::Orange => &mut self.data.orange_lines,
             },
             color: col,
+            song,
         }
     }
 
-    pub fn waveform_widget<'a>(&'a mut self, song: &'a Song) -> WaveformWidget {
-        WaveformWidget {
+    /// points in width of entire song
+    fn song_width(&self, song: &Song) -> f64 {
+        song.length.as_secs_f64() * self.state.pts_per_second
+    }
+
+    fn play_pause(&self, song: &Song) {
+        todo!("toggle song playback")
+    }
+
+    fn handle_keyboard_input(&mut self, ctx: &egui::Context, song: &Song) {
+        use egui::Key;
+        use egui::Event;
+        ctx.input().events
+            .iter()
+            .for_each(|ev| match ev {
+                Event::Key { key: Key::ArrowLeft, pressed: true, modifiers } => self.scroll(-5.0, song),
+                Event::Key { key: Key::ArrowRight, pressed: true, modifiers } => self.scroll(5.0, song),
+                Event::Key { key: Key::Space, pressed: true, modifiers } => self.play_pause(song),
+                _ => (),
+            });
+    }
+
+    fn scroll(&mut self, pts: f64, song: &Song) {
+        self.state.scroll_pos += pts;
+        self.state.scroll_pos.clamp(0f64, self.song_width(song));
+    }
+
+}
+
+impl WizardEditor {
+    pub fn beat_rate_widget<'a>(&'a mut self, song: &'a mut Song) -> BeatRateWidget {
+        BeatRateWidget {
             state: &mut self.state,
+            beat_rate: self.data.beat_rate.as_mut(),
+            song,
+        }
+    }
+
+    pub fn time_signature_widget<'a>(&'a mut self, song: &'a mut Song) -> TimeSignatureWidget {
+        TimeSignatureWidget {
+            state: &mut self.state,
+            time_signatures: self.data.time_signatures.as_mut(),
+            song,
+        }
+    }
+
+    pub fn lines_widget<'a>(&'a mut self, col: Color, song: &'a mut Song) -> LinesWidget<time::Duration> {
+        LinesWidget {
+            state: &mut self.state,
+            lines: match col {
+                Color::Green => &mut self.data.green_lines,
+                Color::Yellow => &mut self.data.yellow_lines,
+                Color::Orange => &mut self.data.orange_lines,
+            },
+            color: col,
             song,
         }
     }
@@ -308,7 +349,7 @@ impl<'a> egui::Widget for BeatRateWidget<'a> {
         // draw widget
         if ui.is_rect_visible(rect) {
             ui.painter()
-                .rect_filled(rect, 0f32, eframe::epaint::Color32::from_gray(0));
+                .rect_filled(rect, 0.0, eframe::epaint::Color32::from_gray(0));
         }
         res
     }
@@ -325,7 +366,7 @@ impl<'a> egui::Widget for TimeSignatureWidget<'a> {
         // 4. draw widget
         if ui.is_rect_visible(rect) {
             ui.painter()
-                .rect_filled(rect, 0f32, eframe::epaint::Color32::from_gray(0));
+                .rect_filled(rect, 0.0, eframe::epaint::Color32::from_gray(0));
         }
         res
     }
@@ -342,24 +383,7 @@ impl<'a> egui::Widget for LinesWidget<'a> {
         // 4. draw widget
         if ui.is_rect_visible(rect) {
             ui.painter()
-                .rect_filled(rect, 0f32, eframe::epaint::Color32::from_gray(0));
-        }
-        res
-    }
-}
-
-impl<'a> egui::Widget for WaveformWidget<'a> {
-    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        // 1. choose size
-        let max_rect = ui.max_rect();
-        let preferred_size = egui::Vec2::new(max_rect.size().x, 60.0);
-        // 2. allocate space
-        let (rect, res) = ui.allocate_exact_size(preferred_size, egui::Sense::click_and_drag());
-        // 3. handle interactions
-        // 4. draw widget
-        if ui.is_rect_visible(rect) {
-            ui.painter()
-                .rect_filled(rect, 0f32, eframe::epaint::Color32::from_gray(0));
+                .rect_filled(rect, 0.0, eframe::epaint::Color32::from_gray(0));
         }
         res
     }
@@ -379,7 +403,7 @@ impl PipeDash {
 
     fn side_panel(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         egui::SidePanel::left("level_picker")
-            .default_width(100f32)
+            .default_width(100.0)
             .show(ctx, |ui| {
                 ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
                     if ui
@@ -484,7 +508,7 @@ impl PipeDash {
 
 impl eframe::App for PipeDash {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        ctx.set_pixels_per_point(2f32);
+        ctx.set_pixels_per_point(2.0);
 
         if let Some(boxed_err) = &self.errors.front() {
             egui::CentralPanel::default().show(ctx, |ui| {
