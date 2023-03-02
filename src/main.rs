@@ -86,10 +86,10 @@ struct WizardData {
 struct Song {
     name: String,
     id: i64,
-    buffer: rodio::buffer::SamplesBuffer<i16>,
-    length: time::Duration,
+    source: rodio::source::Buffered<rodio::Decoder<File>>,
     stream: rodio::OutputStream,
     sink: rodio::Sink,
+    playing: bool,
 }
 
 #[derive(Error, Debug)]
@@ -219,22 +219,33 @@ impl Song {
                 (Err(err), Err(_)) => return Err(err.into()),
             };
             
-            let decoder = rodio::Decoder::new_mp3(file)?;
-
-            let channels = decoder.channels();
-            let sample_rate = decoder.sample_rate();
-            let samples: Vec<i16> = decoder.collect();
-
-            let length = time::Duration::from_secs(samples.len() as u64 / channels as u64 / sample_rate as u64);
-            let buffer = rodio::buffer::SamplesBuffer::new(channels, sample_rate, samples);
+            let source = rodio::Decoder::new_mp3(file)?.buffered();
 
             let (stream, stream_handle) = rodio::OutputStream::try_default()?;
             let sink = rodio::Sink::try_new(&stream_handle)?;
 
-            Ok(Self { name, id, buffer, length, stream, sink })
+            Ok(Self { name, id, source, stream, sink, playing: false })
         } else {
             Err(SongError::NotNewgrounds)
         }
+    }
+
+    pub fn length(&self) -> time::Duration {
+        self.source.total_duration().expect("the source should have a well-defined duration")
+    }
+
+    pub fn play_from(&mut self, position: time::Duration) {
+        self.playing = true;
+        self.sink.append(self.source.clone().skip_duration(position))
+    }
+
+    pub fn stop(&mut self) {
+        self.playing = false;
+        self.sink.stop();
+    }
+
+    pub fn playing(&self) -> bool {
+        self.playing
     }
 }
 
@@ -270,14 +281,21 @@ impl Editor {
 
     /// points in width of entire song
     fn song_width(&self, song: &Song) -> f64 {
-        song.length.as_secs_f64() * self.state.pts_per_second
+        song.length().as_secs_f64() * self.state.pts_per_second
     }
 
-    fn play_pause(&self, song: &Song) {
-        todo!("toggle song playback")
+    fn play_pause(&self, song: &mut Song) {
+        if song.playing() {
+            println!("stopping");
+            song.stop();
+        } else {
+            println!("starting");
+            song.play_from(time::Duration::default());
+        }
+        // todo!("toggle song playback")
     }
 
-    fn handle_keyboard_input(&mut self, ctx: &egui::Context, song: &Song) {
+    fn handle_keyboard_input(&mut self, ctx: &egui::Context, song: &mut Song) {
         use egui::Key;
         use egui::Event;
         ctx.input().events

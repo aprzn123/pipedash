@@ -1,6 +1,7 @@
 use std::time::Duration;
 use ordered_float::OrderedFloat as Float;
 use std::collections::{BTreeMap, BTreeSet};
+use rodio::{Source, Sample};
 
 pub type BeatPosition = Float<f32>;
 
@@ -171,6 +172,43 @@ where
         self.positions.is_empty()
     }
 }
+
+// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// struct SamplesSlice<'a, T: Sample, const N: usize> {
+//     samples: &'a [T],
+//     frame_changes: [usize; N],
+//     channel_counts: &'a [u16; N],
+//     sample_rates: &'a [u32; N],
+//     position: usize,
+// }
+
+// impl<T: Sample, const N: usize> Iterator for SamplesSlice<'_, T, N> {
+//     type Item = T;
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         self.position += 1;
+//         self.samples.get(self.position - 1).map(|x| *x)
+//     }
+// }
+
+// impl<T: Sample, const N: usize> Source for SamplesSlice<'_, T, N> {
+//     fn current_frame_len(&self) -> Option<usize> {
+//         self.frame_changes.iter().find(|&f| f > &self.position).map(|f| f - self.position)
+//     }
+
+//     fn channels(&self) -> u16 {
+//         *self.frame_changes.iter().zip(self.channel_counts).rfind(|(&f, _)| f <= self.position).expect("there will always be a frame change before the current position").1
+//     }
+
+//     fn sample_rate(&self) -> u32 {
+//         *self.frame_changes.iter().zip(self.sample_rates).rfind(|(&f, _)| f <= self.position).expect("there will always be a frame change before the current position").1
+//     }
+
+//     fn total_duration(&self) -> Option<Duration> {
+//         todo!()
+//     }
+// }
+
 
 #[cfg(test)]
 mod tests {
